@@ -1,0 +1,748 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  FACULTY
+  MENTOR
+  STUDENT
+}
+
+enum ImportStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum ProjectStatus {
+  DRAFT
+  IDEA_SUBMITTED
+  FACULTY_REVIEW
+  CHANGES_REQUIRED
+  APPROVED
+  MENTOR_ASSIGNED
+  PROBLEM_STATEMENT_PENDING
+  SRS_PENDING
+  SRS_APPROVED
+  IN_PROGRESS
+  AT_RISK
+  DELAYED
+  FINAL_REVIEW
+  PRESENTATION_SCHEDULED
+  COMPLETED
+  REJECTED
+  ARCHIVED
+}
+
+enum IdeaStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUIRED
+}
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CHANGES_REQUIRED
+}
+
+enum DocumentType {
+  PROJECT_PROPOSAL
+  PROBLEM_STATEMENT
+  SRS
+  UML
+  DFD
+  ER_DIAGRAM
+  ARCHITECTURE
+  PPT
+  FINAL_REPORT
+  SOURCE_CODE
+  APK
+  DEMO_VIDEO
+  OTHER
+}
+
+enum MeetingType {
+  IN_PERSON
+  ONLINE
+  HYBRID
+}
+
+enum PresentationType {
+  INTERNAL
+  EXTERNAL
+  VIVA
+  DEMO
+  FINAL
+}
+
+enum NotificationType {
+  IDEA_APPROVED
+  IDEA_REJECTED
+  IDEA_CHANGES_REQUIRED
+  MENTOR_ASSIGNED
+  DOCUMENT_APPROVED
+  DOCUMENT_REJECTED
+  DOCUMENT_CHANGES_REQUIRED
+  WEEKLY_PROGRESS_APPROVED
+  WEEKLY_PROGRESS_REJECTED
+  WEEKLY_PROGRESS_REMINDER
+  DEADLINE_APPROACHING
+  PROJECT_AT_RISK
+  PROJECT_DELAYED
+  MEETING_SCHEDULED
+  PRESENTATION_SCHEDULED
+  MARKS_PUBLISHED
+  GENERAL
+}
+
+// ─────────────────────────────────────────────
+// USER (admin / faculty / mentor — not students)
+// ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  isActive     Boolean  @default(true)
+  profilePhoto String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  faculty  Faculty?
+  mentor   Mentor?
+  admin    Admin?
+
+  importBatches            ImportBatch[]
+  activityLogs             ActivityLog[]
+  notifications            Notification[]
+  sentMessages             Message[]                    @relation("SentMessages")
+  conversationParticipants ConversationParticipant[]
+}
+
+model Admin {
+  id     String @id @default(uuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────────
+// ACADEMIC STRUCTURE
+// ─────────────────────────────────────────────
+
+model AcademicYear {
+  id        String   @id @default(uuid())
+  label     String   @unique
+  isActive  Boolean  @default(false)
+  startDate DateTime?
+  endDate   DateTime?
+  createdAt DateTime @default(now())
+
+  semesters Semester[]
+  students  Student[]
+  subjects  Subject[]
+  projects  Project[]
+}
+
+model Semester {
+  id             String       @id @default(uuid())
+  number         Int
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  students Student[]
+  subjects Subject[]
+
+  @@unique([number, academicYearId])
+}
+
+// ─────────────────────────────────────────────
+// FACULTY
+// ─────────────────────────────────────────────
+
+model Faculty {
+  id          String  @id @default(uuid())
+  userId      String  @unique
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  facultyId   String  @unique
+  designation String
+  mobile      String?
+
+  subjects         FacultySubject[]
+  projects         Project[]
+  ideaReviews      IdeaReview[]
+  documentReviews  DocumentVersion[] @relation("FacultyDocumentReviews")
+  progressVerifications ProgressReview[] @relation("FacultyProgressReviews")
+  meetings         Meeting[]         @relation("FacultyMeetings")
+  presentations    Presentation[]
+  evaluations      Evaluation[]
+  milestones       Milestone[]
+}
+
+model Subject {
+  id             String       @id @default(uuid())
+  name           String
+  code           String       @unique
+  semesterId     String
+  semester       Semester     @relation(fields: [semesterId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  description    String?
+  durationWeeks  Int          @default(12)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  faculty            FacultySubject[]
+  projects           Project[]
+  evaluationCriteria EvaluationCriteria[]
+  milestoneTemplates MilestoneTemplate[]
+}
+
+model FacultySubject {
+  id        String  @id @default(uuid())
+  facultyId String
+  faculty   Faculty @relation(fields: [facultyId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([facultyId, subjectId])
+}
+
+// ─────────────────────────────────────────────
+// DOMAIN
+// ─────────────────────────────────────────────
+
+model Domain {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  mentors  MentorDomain[]
+  projects Project[]
+  ideas    ProjectIdea[]
+}
+
+// ─────────────────────────────────────────────
+// MENTOR
+// ─────────────────────────────────────────────
+
+model Mentor {
+  id      String  @id @default(uuid())
+  userId  String  @unique
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mentorId String @unique
+  mobile  String?
+  expertise String?
+
+  domains          MentorDomain[]
+  projects         Project[]
+  weeklyReviews    ProgressReview[] @relation("MentorProgressReviews")
+  documentReviews  DocumentVersion[] @relation("MentorDocumentReviews")
+  ideaReviews      IdeaReview[]     @relation("MentorIdeaReviews")
+  meetings         Meeting[]
+}
+
+model MentorDomain {
+  id       String @id @default(uuid())
+  mentorId String
+  mentor   Mentor @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  domainId String
+  domain   Domain @relation(fields: [domainId], references: [id], onDelete: Cascade)
+
+  @@unique([mentorId, domainId])
+}
+
+// ─────────────────────────────────────────────
+// STUDENT
+// ─────────────────────────────────────────────
+
+model Student {
+  id               String       @id @default(uuid())
+  enrollmentNumber String       @unique
+  rollNumber       String?
+  name             String
+  email            String       @unique
+  mobile           String
+  passwordHash     String?
+  profilePhoto     String?
+  isActive         Boolean      @default(true)
+  isActivated      Boolean      @default(false)
+  activationToken  String?      @unique
+  academicYearId   String
+  academicYear     AcademicYear @relation(fields: [academicYearId], references: [id])
+  semesterId       String
+  semester         Semester     @relation(fields: [semesterId], references: [id])
+  importBatchId    String?
+  importBatch      ImportBatch? @relation(fields: [importBatchId], references: [id])
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  projectMembers   ProjectMember[]
+  weeklyProgress   WeeklyProgress[]
+  documents        Document[]
+  conversations    ConversationParticipant[]
+  sentMessages     StudentMessage[]
+  notifications    StudentNotification[]
+  activityLogs     StudentActivityLog[]
+
+  @@index([academicYearId, semesterId])
+}
+
+// ─────────────────────────────────────────────
+// PROJECT
+// ─────────────────────────────────────────────
+
+model Project {
+  id             String        @id @default(uuid())
+  title          String
+  subjectId      String
+  subject        Subject       @relation(fields: [subjectId], references: [id])
+  academicYearId String
+  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id])
+  facultyId      String
+  faculty        Faculty       @relation(fields: [facultyId], references: [id])
+  mentorId       String?
+  mentor         Mentor?       @relation(fields: [mentorId], references: [id])
+  domainId       String?
+  domain         Domain?       @relation(fields: [domainId], references: [id])
+  status         ProjectStatus @default(DRAFT)
+  progress       Float         @default(0)
+  currentWeek    Int           @default(0)
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  members        ProjectMember[]
+  idea           ProjectIdea?
+  milestones     Milestone[]
+  weeklyProgress WeeklyProgress[]
+  documents      Document[]
+  conversations  Conversation[]
+  meetings       Meeting[]
+  presentations  Presentation[]
+  evaluation     Evaluation?
+  activityLogs   ActivityLog[]
+
+  @@index([subjectId, academicYearId])
+  @@index([facultyId])
+  @@index([mentorId])
+  @@index([status])
+}
+
+model ProjectMember {
+  id        String  @id @default(uuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id])
+  isLead    Boolean @default(false)
+
+  @@unique([projectId, studentId])
+}
+
+// ─────────────────────────────────────────────
+// PROJECT IDEA
+// ─────────────────────────────────────────────
+
+model ProjectIdea {
+  id               String     @id @default(uuid())
+  projectId        String     @unique
+  project          Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  domainId         String?
+  domain           Domain?    @relation(fields: [domainId], references: [id])
+  title            String
+  abstract         String
+  problemStatement String
+  objectives       String
+  scope            String
+  technologies     String
+  expectedOutcome  String
+  teamMembers      String?
+  status           IdeaStatus @default(PENDING)
+  submittedAt      DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  reviews IdeaReview[]
+}
+
+model IdeaReview {
+  id          String     @id @default(uuid())
+  ideaId      String
+  idea        ProjectIdea @relation(fields: [ideaId], references: [id], onDelete: Cascade)
+  reviewerId  String?
+  reviewer    Faculty?   @relation(fields: [reviewerId], references: [id])
+  mentorReviewerId String?
+  mentorReviewer   Mentor? @relation("MentorIdeaReviews", fields: [mentorReviewerId], references: [id])
+  status      ReviewStatus
+  comments    String?
+  reviewedAt  DateTime   @default(now())
+}
+
+// ─────────────────────────────────────────────
+// MILESTONE TEMPLATE (per subject)
+// ─────────────────────────────────────────────
+
+model MilestoneTemplate {
+  id          String  @id @default(uuid())
+  subjectId   String
+  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  weekNumber  Int
+  title       String
+  description String?
+  weight      Float   @default(0)
+  isRequired  Boolean @default(true)
+
+  @@unique([subjectId, weekNumber])
+}
+
+// ─────────────────────────────────────────────
+// MILESTONE (per project)
+// ─────────────────────────────────────────────
+
+model Milestone {
+  id               String       @id @default(uuid())
+  projectId        String
+  project          Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  facultyId        String?
+  faculty          Faculty?     @relation(fields: [facultyId], references: [id])
+  weekNumber       Int
+  title            String
+  description      String?
+  weight           Float        @default(0)
+  requiredEvidence String?
+  startDate        DateTime?
+  endDate          DateTime?
+  completedAt      DateTime?
+  status           ReviewStatus @default(PENDING)
+  isRequired       Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+
+  weeklyProgress WeeklyProgress[]
+
+  @@unique([projectId, weekNumber])
+}
+
+// ─────────────────────────────────────────────
+// WEEKLY PROGRESS
+// ─────────────────────────────────────────────
+
+model WeeklyProgress {
+  id              String   @id @default(uuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  studentId       String
+  student         Student  @relation(fields: [studentId], references: [id])
+  milestoneId     String?
+  milestone       Milestone? @relation(fields: [milestoneId], references: [id])
+  weekNumber      Int
+  taskTitle       String
+  description     String
+  completedWork   String
+  problemsFaced   String?
+  nextWeekPlan    String?
+  githubUrl       String?
+  demoUrl         String?
+  screenshots     String[] @default([])
+  files           String[] @default([])
+  submittedAt     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  reviews ProgressReview[]
+
+  @@unique([projectId, weekNumber])
+}
+
+model ProgressReview {
+  id              String         @id @default(uuid())
+  progressId      String
+  progress        WeeklyProgress @relation(fields: [progressId], references: [id], onDelete: Cascade)
+  mentorId        String?
+  mentor          Mentor?        @relation("MentorProgressReviews", fields: [mentorId], references: [id])
+  facultyId       String?
+  faculty         Faculty?       @relation("FacultyProgressReviews", fields: [facultyId], references: [id])
+  status          ReviewStatus
+  feedback        String?
+  reviewedAt      DateTime       @default(now())
+}
+
+// ─────────────────────────────────────────────
+// DOCUMENTS
+// ─────────────────────────────────────────────
+
+model Document {
+  id        String       @id @default(uuid())
+  projectId String
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student      @relation(fields: [studentId], references: [id])
+  type      DocumentType
+  createdAt DateTime     @default(now())
+
+  versions DocumentVersion[]
+}
+
+model DocumentVersion {
+  id          String       @id @default(uuid())
+  documentId  String
+  document    Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version     Int          @default(1)
+  fileUrl     String
+  fileName    String
+  fileSize    Int?
+  mimeType    String?
+  status      ReviewStatus @default(PENDING)
+  facultyId   String?
+  faculty     Faculty?     @relation("FacultyDocumentReviews", fields: [facultyId], references: [id])
+  mentorId    String?
+  mentor      Mentor?      @relation("MentorDocumentReviews", fields: [mentorId], references: [id])
+  comments    String?
+  uploadedAt  DateTime     @default(now())
+  reviewedAt  DateTime?
+}
+
+// ─────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────
+
+model Notification {
+  id         String           @id @default(uuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       NotificationType
+  title      String
+  body       String
+  link       String?
+  isRead     Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+}
+
+model StudentNotification {
+  id        String           @id @default(uuid())
+  studentId String
+  student   Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String
+  link      String?
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+}
+
+// ─────────────────────────────────────────────
+// CHAT
+// ─────────────────────────────────────────────
+
+model Conversation {
+  id        String   @id @default(uuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  participants ConversationParticipant[]
+  messages     Message[]
+  studentMessages StudentMessage[]
+}
+
+model ConversationParticipant {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+  studentId      String?
+  student        Student?     @relation(fields: [studentId], references: [id])
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+  body           String?
+  fileUrl        String?
+  fileName       String?
+  isRead         Boolean      @default(false)
+  sentAt         DateTime     @default(now())
+}
+
+model StudentMessage {
+  id             String       @id @default(uuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  studentId      String
+  student        Student      @relation(fields: [studentId], references: [id])
+  body           String?
+  fileUrl        String?
+  fileName       String?
+  isRead         Boolean      @default(false)
+  sentAt         DateTime     @default(now())
+}
+
+// ─────────────────────────────────────────────
+// MEETINGS
+// ─────────────────────────────────────────────
+
+model Meeting {
+  id          String      @id @default(uuid())
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mentorId    String?
+  mentor      Mentor?     @relation(fields: [mentorId], references: [id])
+  facultyId   String?
+  faculty     Faculty?    @relation("FacultyMeetings", fields: [facultyId], references: [id])
+  title       String
+  scheduledAt DateTime
+  duration    Int?
+  type        MeetingType @default(IN_PERSON)
+  venue       String?
+  meetLink    String?
+  agenda      String?
+  createdAt   DateTime    @default(now())
+}
+
+// ─────────────────────────────────────────────
+// PRESENTATIONS
+// ─────────────────────────────────────────────
+
+model Presentation {
+  id           String           @id @default(uuid())
+  projectId    String
+  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  facultyId    String?
+  faculty      Faculty?         @relation(fields: [facultyId], references: [id])
+  title        String
+  scheduledAt  DateTime
+  venue        String?
+  panelMembers String?
+  type         PresentationType @default(INTERNAL)
+  notes        String?
+  createdAt    DateTime         @default(now())
+}
+
+// ─────────────────────────────────────────────
+// EVALUATION
+// ─────────────────────────────────────────────
+
+model EvaluationCriteria {
+  id          String  @id @default(uuid())
+  subjectId   String
+  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  maxMarks    Float
+  isActive    Boolean @default(true)
+
+  marks EvaluationMark[]
+
+  @@unique([subjectId, name])
+}
+
+model Evaluation {
+  id             String   @id @default(uuid())
+  projectId      String   @unique
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  facultyId      String?
+  faculty        Faculty? @relation(fields: [facultyId], references: [id])
+  totalMarks     Float?
+  grade          String?
+  facultyRemarks String?
+  mentorRemarks  String?
+  completedAt    DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  marks EvaluationMark[]
+}
+
+model EvaluationMark {
+  id          String             @id @default(uuid())
+  evaluationId String
+  evaluation  Evaluation         @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  criteriaId  String
+  criteria    EvaluationCriteria @relation(fields: [criteriaId], references: [id])
+  marksAwarded Float
+
+  @@unique([evaluationId, criteriaId])
+}
+
+// ─────────────────────────────────────────────
+// ACTIVITY LOGS
+// ─────────────────────────────────────────────
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  projectId  String?
+  project    Project? @relation(fields: [projectId], references: [id])
+  action     String
+  entityType String?
+  entityId   String?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+}
+
+model StudentActivityLog {
+  id        String   @id @default(uuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id])
+  action    String
+  entityType String?
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// IMPORT (existing, preserved)
+// ─────────────────────────────────────────────
+
+model ImportBatch {
+  id                   String       @id @default(uuid())
+  fileName             String
+  uploadedById         String
+  uploadedBy           User         @relation(fields: [uploadedById], references: [id])
+  academicYearId       String
+  semesterId           String
+  totalRows            Int
+  validRows            Int
+  duplicateRows        Int
+  invalidRows          Int
+  status               ImportStatus @default(PENDING)
+  validRowsJson        Json
+  sendActivationEmails Boolean      @default(true)
+  students             Student[]
+  errors               ImportError[]
+  createdAt            DateTime     @default(now())
+  expiresAt            DateTime
+}
+
+model ImportError {
+  id            String      @id @default(uuid())
+  importBatchId String
+  importBatch   ImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  rowNumber     Int
+  rawData       Json
+  reason        String
+}
