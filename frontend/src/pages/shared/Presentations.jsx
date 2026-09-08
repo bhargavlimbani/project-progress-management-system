@@ -43,8 +43,12 @@ export default function Presentations() {
     [canSchedule]
   );
 
-  const projects = meta.projects?.data || meta.projects || [];
-  const presentations = data?.data || [];
+  // projectApi.list() returns { projects, total, page, ... } — NOT { data }.
+  // presentationApi.list() is paginated and returns { data, pagination }.
+  // Both are guarded so a shape change degrades to an empty list rather than
+  // throwing "x.map is not a function" and blanking the page.
+  const projects = Array.isArray(meta.projects?.projects) ? meta.projects.projects : [];
+  const presentations = Array.isArray(data?.data) ? data.data : [];
 
   const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(emptyForm);

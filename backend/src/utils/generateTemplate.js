@@ -5,7 +5,7 @@ const HEADERS = [
   "Student Name",
   "Email",
   "Mobile",
-  "Roll Number",
+  "GR Number",
   "Semester",
   "Academic Year",
 ];

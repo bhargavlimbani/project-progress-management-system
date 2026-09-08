@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import {
-  MessageSquare, Send, Paperclip, Loader2, Download, X, ArrowLeft,
+  MessageSquare, Send, Paperclip, Loader2, Download, X, ArrowLeft, PenSquare, FolderKanban,
 } from "lucide-react";
 import { chatApi } from "../../services/index.js";
 import { useApi } from "../../hooks/useApi.js";
@@ -11,6 +11,7 @@ import {
   apiErrorMessage, formatTime, formatDate, timeAgo, initials, truncate,
 } from "../../utils/format.js";
 import { PageHeader, EmptyState, SkeletonCard } from "../../components/ui/index.js";
+import NewMessageModal from "../../features/chat/NewMessageModal.jsx";
 
 /**
  * Conversation list plus thread (spec §48). Each project has one conversation
@@ -33,6 +34,7 @@ export default function Chat() {
   const [file, setFile] = useState(null);
   const [sending, setSending] = useState(false);
   const [showThreadOnMobile, setShowThreadOnMobile] = useState(false);
+  const [composing, setComposing] = useState(false);
 
   // Auto-open the most recent conversation on desktop.
   useEffect(() => {
@@ -105,6 +107,13 @@ export default function Chat() {
     }
   };
 
+  const openedDirect = async (conversationId) => {
+    await refetch();
+    setActiveId(conversationId);
+    setMessages([]);
+    setShowThreadOnMobile(true);
+  };
+
   const isOwn = (message) =>
     message.senderKind === (user.role === "STUDENT" ? "STUDENT" : "USER") &&
     message.sender?.id === user.id;
@@ -133,9 +142,21 @@ export default function Chat() {
           <EmptyState
             icon={MessageSquare}
             title="No conversations yet"
-            message="A conversation opens automatically for each project — visit a project's Chat tab to start one."
+            message="Start a private one-to-one conversation, or open a project's Chat tab for its group thread."
+            action={
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setComposing(true)}>
+                <PenSquare size={14} />
+                New Message
+              </button>
+            }
           />
         </div>
+
+        <NewMessageModal
+          open={composing}
+          onClose={() => setComposing(false)}
+          onOpened={openedDirect}
+        />
       </>
     );
   }
@@ -145,8 +166,14 @@ export default function Chat() {
       <PageHeader
         icon={MessageSquare}
         title="Chat"
-        subtitle="One conversation per project, with your mentor and faculty."
+        subtitle="Private one-to-one messages, plus the group thread for each project."
         crumbs={[{ label: "Chat" }]}
+        actions={
+          <button type="button" className="btn btn-primary" onClick={() => setComposing(true)}>
+            <PenSquare size={15} />
+            New Message
+          </button>
+        }
       />
 
       <div className="glass-card chat-layout">
@@ -179,16 +206,32 @@ export default function Chat() {
                 }}
               >
                 <div
-                  className="truncate"
-                  style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--white)" }}
+                  style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}
                 >
-                  {conversation.project?.title || "Project"}
+                  {conversation.type === "DIRECT" ? (
+                    <span
+                      className="avatar-placeholder"
+                      style={{ width: 22, height: 22, fontSize: "0.55rem", flexShrink: 0 }}
+                    >
+                      {initials(conversation.title)}
+                    </span>
+                  ) : (
+                    <FolderKanban size={13} color="var(--purple-400)" style={{ flexShrink: 0 }} />
+                  )}
+                  <span
+                    className="truncate"
+                    style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--white)" }}
+                  >
+                    {conversation.title || conversation.project?.title || "Conversation"}
+                  </span>
                 </div>
                 <div
                   className="truncate"
-                  style={{ fontSize: "0.7rem", color: "var(--purple-400)", marginTop: 1 }}
+                  style={{ fontSize: "0.7rem", color: "var(--purple-400)", marginTop: 2, paddingLeft: 29 }}
                 >
-                  {conversation.project?.subject?.name}
+                  {conversation.type === "DIRECT"
+                    ? conversation.subtitle
+                    : conversation.project?.subject?.name}
                 </div>
                 <div
                   className="truncate"
@@ -199,6 +242,8 @@ export default function Chat() {
                         conversation.lastMessage.body || "Sent an attachment",
                         38
                       )}`
+                    : conversation.type === "DIRECT"
+                    ? "No messages yet — say hello"
                     : others?.length
                     ? `With ${others.slice(0, 2).join(", ")}`
                     : "No messages yet"}
@@ -239,10 +284,12 @@ export default function Chat() {
 
             <div style={{ minWidth: 0 }}>
               <div className="truncate" style={{ fontSize: "0.875rem", fontWeight: 700 }}>
-                {active?.project?.title || "Conversation"}
+                {active?.title || active?.project?.title || "Conversation"}
               </div>
               <div style={{ fontSize: "0.7rem", color: "var(--slate-500)" }}>
-                {active?.participants?.length || 0} participants
+                {active?.type === "DIRECT"
+                  ? `Private conversation · ${active?.subtitle || ""}`
+                  : `${active?.participants?.length || 0} participants`}
               </div>
             </div>
           </div>
@@ -450,6 +497,12 @@ export default function Chat() {
           </form>
         </div>
       </div>
+
+      <NewMessageModal
+        open={composing}
+        onClose={() => setComposing(false)}
+        onOpened={openedDirect}
+      />
     </>
   );
 }

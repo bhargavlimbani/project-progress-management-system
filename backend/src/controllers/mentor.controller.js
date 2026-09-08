@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../config/prisma");
 const { logActivity } = require("../services/activityLog.service");
+const { SAFE_USER_SELECT, STUDENT_SUMMARY_SELECT } = require("../utils/safeFields");
 
 async function getMentors(req, res, next) {
   try {
@@ -21,9 +22,15 @@ async function getMentorById(req, res, next) {
     const mentor = await prisma.mentor.findUnique({
       where: { id: req.params.id },
       include: {
-        user: true,
+        user: { select: SAFE_USER_SELECT },
         domains: { include: { domain: true } },
-        projects: { include: { subject: true, members: { include: { student: true } } }, take: 20 },
+        projects: {
+          include: {
+            subject: true,
+            members: { include: { student: { select: STUDENT_SUMMARY_SELECT } } },
+          },
+          take: 20,
+        },
       },
     });
     if (!mentor) return res.status(404).json({ message: "Mentor not found." });

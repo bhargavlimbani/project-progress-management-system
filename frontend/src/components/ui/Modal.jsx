@@ -20,22 +20,63 @@ export default function Modal({
   const panelRef = useRef(null);
   const previouslyFocused = useRef(null);
 
+  /**
+   * Callers pass `onClose` as an inline arrow, so its identity changes on every
+   * render. Holding it in a ref keeps the effects below depending only on
+   * `open` — otherwise every keystroke in a controlled field would re-run them
+   * and yank the caret back to the first input.
+   */
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // ── Open/close transition: lock scroll, autofocus once, restore on close ──
   useEffect(() => {
     if (!open) return undefined;
 
     previouslyFocused.current = document.activeElement;
     document.body.style.overflow = "hidden";
 
+    // Focus the first field once the entry animation has settled. This runs
+    // only when the dialog opens, never on subsequent re-renders.
+    const timer = setTimeout(() => {
+      const panel = panelRef.current;
+      if (!panel) return;
+
+      // Never steal focus if the user is already typing somewhere inside.
+      if (panel.contains(document.activeElement)) return;
+
+      const target =
+        panel.querySelector("[data-autofocus]") ||
+        panel.querySelector(
+          "input:not([disabled]):not([type=hidden]), textarea:not([disabled]), select:not([disabled])"
+        );
+      target?.focus();
+    }, 60);
+
+    return () => {
+      clearTimeout(timer);
+      document.body.style.overflow = "";
+      previouslyFocused.current?.focus?.();
+    };
+  }, [open]);
+
+  // ── Escape to close + Tab focus trap ─────────────────────────────────────
+  useEffect(() => {
+    if (!open) return undefined;
+
     const onKeyDown = (e) => {
       if (e.key === "Escape") {
-        onClose?.();
+        onCloseRef.current?.();
         return;
       }
       if (e.key !== "Tab" || !panelRef.current) return;
 
-      const focusables = panelRef.current.querySelectorAll(
-        'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
-      );
+      const focusables = Array.from(
+        panelRef.current.querySelectorAll(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null);
+
       if (!focusables.length) return;
 
       const first = focusables[0];
@@ -51,21 +92,8 @@ export default function Modal({
     };
 
     document.addEventListener("keydown", onKeyDown);
-    // Focus the first field once the entry animation has settled.
-    const timer = setTimeout(() => {
-      const target = panelRef.current?.querySelector(
-        'input, textarea, select, button:not([data-close])'
-      );
-      target?.focus();
-    }, 60);
-
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      clearTimeout(timer);
-      document.body.style.overflow = "";
-      previouslyFocused.current?.focus?.();
-    };
-  }, [open, onClose]);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
 
   return createPortal(
     <AnimatePresence>

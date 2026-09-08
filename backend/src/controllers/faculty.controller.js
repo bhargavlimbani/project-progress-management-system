@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const prisma = require("../config/prisma");
 const { logActivity } = require("../services/activityLog.service");
+const { SAFE_USER_SELECT, STUDENT_SUMMARY_SELECT } = require("../utils/safeFields");
 
 async function getFaculty(req, res, next) {
   try {
@@ -21,9 +22,16 @@ async function getFacultyById(req, res, next) {
     const faculty = await prisma.faculty.findUnique({
       where: { id: req.params.id },
       include: {
-        user: true,
+        user: { select: SAFE_USER_SELECT },
         subjects: { include: { subject: { include: { semester: true, academicYear: true } } } },
-        projects: { include: { subject: true, members: { include: { student: true } } }, take: 10, orderBy: { createdAt: "desc" } },
+        projects: {
+          include: {
+            subject: true,
+            members: { include: { student: { select: STUDENT_SUMMARY_SELECT } } },
+          },
+          take: 10,
+          orderBy: { createdAt: "desc" },
+        },
       },
     });
     if (!faculty) return res.status(404).json({ message: "Faculty not found." });

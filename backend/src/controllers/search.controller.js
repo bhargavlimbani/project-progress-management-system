@@ -1,6 +1,7 @@
 const prisma = require("../config/prisma");
 const asyncHandler = require("../utils/asyncHandler");
 const { scopeProjectWhere } = require("../services/access.service");
+const { VISIBLE_USER } = require("../utils/visibility");
 
 const contains = (q) => ({ contains: q, mode: "insensitive" });
 
@@ -77,6 +78,7 @@ const globalSearch = asyncHandler(async (req, res) => {
   if (isAdmin) {
     tasks.faculty = prisma.faculty.findMany({
       where: {
+        user: VISIBLE_USER,
         OR: [
           { facultyId: contains(q) },
           { user: { name: contains(q) } },
@@ -89,6 +91,7 @@ const globalSearch = asyncHandler(async (req, res) => {
 
     tasks.mentors = prisma.mentor.findMany({
       where: {
+        user: VISIBLE_USER,
         OR: [
           { mentorId: contains(q) },
           { expertise: contains(q) },

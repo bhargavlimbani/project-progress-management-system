@@ -14,7 +14,12 @@ const HEADER_ALIASES = {
   email: "email",
   mobile: "mobile",
   "mobile number": "mobile",
-  "roll number": "rollNumber",
+  "gr number": "grNumber",
+  "gr no": "grNumber",
+  grno: "grNumber",
+  // Older sheets used "Roll Number" for the same column — keep importing them.
+  "roll number": "grNumber",
+  "roll no": "grNumber",
   semester: "semester",
   "academic year": "academicYear",
 };
@@ -24,12 +29,32 @@ function normalizeHeader(header) {
   return HEADER_ALIASES[key] || null;
 }
 
+/**
+ * Coerce every cell to a trimmed string.
+ *
+ * Excel stores a bare enrollment number like 121771 as a NUMBER, so without
+ * this the parser hands Prisma a mixed array and the query dies with
+ * "Argument `in`: Invalid value provided. Expected String ... provided (String, Int)".
+ * Every column we import maps to a String in the database, so normalising here
+ * is both correct and the narrowest place to fix it.
+ */
+function cellToString(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number") {
+    // Avoid 1.21771e+5 style output on large values.
+    return Number.isInteger(value) ? String(value) : String(value).trim();
+  }
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return String(value).trim();
+}
+
 function normalizeRawRows(rawRows) {
   return rawRows.map((raw) => {
     const row = {};
     for (const [header, value] of Object.entries(raw)) {
       const key = normalizeHeader(header);
-      if (key) row[key] = typeof value === "string" ? value.trim() : value;
+      if (key) row[key] = cellToString(value);
     }
     return row;
   });
@@ -46,7 +71,9 @@ function parseFile(buffer, originalName) {
 
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rawRows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+  // raw:false yields the cell's DISPLAYED text, which keeps long numeric
+  // enrollment numbers intact instead of surfacing float artifacts.
+  const rawRows = XLSX.utils.sheet_to_json(firstSheet, { defval: "", raw: false });
   return normalizeRawRows(rawRows);
 }
 
@@ -78,7 +105,17 @@ async function validateRows(rows, { academicYearId, semesterId }) {
 
     const shape = validateRowShape(row);
     if (!shape.valid) {
-      invalid.push({ rowNumber, row, reason: shape.reason });
+      // Surface the identifying fields at the top level too — the Review step
+      // needs to show WHICH row failed, not just that one did.
+      invalid.push({
+        rowNumber,
+        enrollmentNumber: row.enrollmentNumber || "",
+        name: row.name || "",
+        email: row.email || "",
+        mobile: row.mobile || "",
+        row,
+        reason: shape.reason,
+      });
       return;
     }
 
@@ -88,6 +125,10 @@ async function validateRows(rows, { academicYearId, semesterId }) {
     if (isDuplicateInFile || isDuplicateInDb) {
       duplicates.push({
         rowNumber,
+        enrollmentNumber: row.enrollmentNumber || "",
+        name: row.name || "",
+        email: row.email || "",
+        mobile: row.mobile || "",
         row,
         reason: isDuplicateInDb
           ? "Enrollment number or email already exists in the system"
@@ -104,7 +145,7 @@ async function validateRows(rows, { academicYearId, semesterId }) {
       name: row.name,
       email: row.email,
       mobile: row.mobile,
-      rollNumber: row.rollNumber || null,
+      grNumber: row.grNumber || null,
       academicYearId,
       semesterId,
     });
@@ -167,7 +208,7 @@ async function confirmImport(batchId) {
           name: row.name,
           email: row.email,
           mobile: row.mobile,
-          rollNumber: row.rollNumber,
+          grNumber: row.grNumber,
           academicYearId: row.academicYearId,
           semesterId: row.semesterId,
           activationToken: generateActivationToken(),

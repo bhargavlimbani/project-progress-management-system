@@ -74,6 +74,13 @@ enum DocumentType {
   OTHER
 }
 
+enum ConversationType {
+  /// Group thread for a project — its students, faculty and mentor.
+  PROJECT
+  /// One-to-one thread between exactly two people.
+  DIRECT
+}
+
 enum MeetingType {
   IN_PERSON
   ONLINE
@@ -119,6 +126,10 @@ model User {
   passwordHash String
   role         Role
   isActive     Boolean  @default(true)
+  /// Owner/break-glass account. Signs in and works normally, but is filtered
+  /// out of every listing, directory, search result and activity feed so it
+  /// never appears in the UI. See utils/visibility.js.
+  isHidden     Boolean  @default(false)
   profilePhoto String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -276,7 +287,7 @@ model MentorDomain {
 model Student {
   id               String       @id @default(uuid())
   enrollmentNumber String       @unique
-  rollNumber       String?
+  grNumber         String?
   name             String
   email            String       @unique
   mobile           String
@@ -551,10 +562,12 @@ model StudentNotification {
 // ─────────────────────────────────────────────
 
 model Conversation {
-  id        String   @id @default(uuid())
-  projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  createdAt DateTime @default(now())
+  id        String           @id @default(uuid())
+  type      ConversationType @default(PROJECT)
+  /// Null for DIRECT threads, which are not tied to any project.
+  projectId String?
+  project   Project?         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt DateTime         @default(now())
 
   participants ConversationParticipant[]
   messages     Message[]

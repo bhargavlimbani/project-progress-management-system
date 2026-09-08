@@ -1,4 +1,5 @@
 const prisma = require("../config/prisma");
+const { VISIBLE_USER_RELATION } = require("../utils/visibility");
 
 // ── Analytics Controller ───────────────────────────────────────────────────
 
@@ -229,6 +230,7 @@ async function getWeeklySubmissionStats(req, res, next) {
 async function getRecentActivity(req, res, next) {
   try {
     const logs = await prisma.activityLog.findMany({
+      where: VISIBLE_USER_RELATION,
       orderBy: { createdAt: "desc" },
       take: 20,
       include: { user: { select: { name: true, role: true } } },

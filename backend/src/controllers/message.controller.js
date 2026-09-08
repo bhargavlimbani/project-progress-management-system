@@ -3,6 +3,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const ApiError = require("../utils/ApiError");
 const { uploadFile } = require("../services/storage.service");
 const { scopeProjectWhere } = require("../services/access.service");
+const { listContactsFor, canMessage } = require("../services/contacts.service");
 
 /**
  * Chat is stored in two tables because students and staff live in separate
@@ -40,8 +41,14 @@ async function assertParticipant(user, conversationId) {
     user.role === "STUDENT" ? p.studentId === user.id : p.userId === user.id
   );
 
-  // Admins can audit any thread; everyone else must be a listed participant.
-  if (!isParticipant && user.role !== "ADMIN") {
+  /**
+   * A DIRECT thread is private between exactly two people — not even an admin
+   * may read it without being one of them. Project group threads stay
+   * auditable by an admin, since they are team-wide by design.
+   */
+  const adminMayAudit = user.role === "ADMIN" && conversation.type !== "DIRECT";
+
+  if (!isParticipant && !adminMayAudit) {
     throw ApiError.forbidden("You are not a participant in this conversation.");
   }
   return conversation;
@@ -49,11 +56,12 @@ async function assertParticipant(user, conversationId) {
 
 /** Every conversation the caller belongs to, newest activity first. */
 const getConversations = asyncHandler(async (req, res) => {
+  // Only threads the caller actually belongs to. Admins previously matched
+  // `{}` here, which listed every conversation in the system — including
+  // direct messages between other people.
   const where =
     req.user.role === "STUDENT"
       ? { participants: { some: { studentId: req.user.id } } }
-      : req.user.role === "ADMIN"
-      ? {}
       : { participants: { some: { userId: req.user.id } } };
 
   const conversations = await prisma.conversation.findMany({
@@ -87,10 +95,26 @@ const getConversations = asyncHandler(async (req, res) => {
       ...c.studentMessages.map((m) => toTimelineItem(m, "STUDENT")),
     ].sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
 
+    // A direct thread has no project, so it is titled by the other person.
+    const me = (p) =>
+      req.user.role === "STUDENT" ? p.studentId === req.user.id : p.userId === req.user.id;
+    const other = c.participants.find((p) => !me(p));
+    const otherPerson = other?.user || other?.student || null;
+
     return {
       id: c.id,
+      type: c.type,
       project: c.project,
       participants: c.participants,
+      title:
+        c.type === "DIRECT"
+          ? otherPerson?.name || "Direct message"
+          : c.project?.title || "Project",
+      subtitle:
+        c.type === "DIRECT"
+          ? other?.user?.role || (other?.student ? "STUDENT" : "")
+          : c.project?.subject?.name || "",
+      counterpart: otherPerson,
       lastMessage: candidates[0] || null,
       updatedAt: candidates[0]?.sentAt || c.createdAt,
     };
@@ -266,8 +290,92 @@ const getUnreadCount = asyncHandler(async (req, res) => {
   res.json({ count: fromUsers + fromStudents });
 });
 
+/** People the caller may start a direct conversation with. */
+const getContacts = asyncHandler(async (req, res) => {
+  const { staff, students } = await listContactsFor(req.user);
+
+  const q = String(req.query.q || "").trim().toLowerCase();
+  const match = (c) =>
+    !q ||
+    [c.name, c.email, c.code, c.subtitle]
+      .filter(Boolean)
+      .some((v) => String(v).toLowerCase().includes(q));
+
+  const filteredStaff = staff.filter(match);
+  const filteredStudents = students.filter(match);
+
+  // Grouped the way the picker renders them.
+  res.json({
+    groups: [
+      { key: "ADMIN", label: "Administrators", items: filteredStaff.filter((c) => c.role === "ADMIN") },
+      { key: "FACULTY", label: "Faculty", items: filteredStaff.filter((c) => c.role === "FACULTY") },
+      { key: "MENTOR", label: "Mentors", items: filteredStaff.filter((c) => c.role === "MENTOR") },
+      { key: "STUDENT", label: "Students", items: filteredStudents },
+    ].filter((g) => g.items.length > 0),
+    total: filteredStaff.length + filteredStudents.length,
+  });
+});
+
+/**
+ * Find or create the one-to-one thread between the caller and one other
+ * person. Idempotent: messaging the same person twice reuses the thread
+ * rather than creating a second one.
+ */
+const openDirectConversation = asyncHandler(async (req, res) => {
+  const { kind, id } = req.body;
+
+  if (!["USER", "STUDENT"].includes(kind) || !id) {
+    throw ApiError.badRequest("Provide kind ('USER' or 'STUDENT') and the person's id.");
+  }
+  if (!(await canMessage(req.user, { kind, id }))) {
+    throw ApiError.forbidden("You cannot start a conversation with this person.");
+  }
+
+  const meIsStudent = req.user.role === "STUDENT";
+  const mine = meIsStudent ? { studentId: req.user.id } : { userId: req.user.id };
+  const theirs = kind === "STUDENT" ? { studentId: id } : { userId: id };
+
+  // A direct thread containing BOTH of us and nobody else.
+  const existing = await prisma.conversation.findFirst({
+    where: {
+      type: "DIRECT",
+      AND: [{ participants: { some: mine } }, { participants: { some: theirs } }],
+    },
+    include: { participants: true },
+  });
+
+  if (existing && existing.participants.length === 2) {
+    return res.json(existing);
+  }
+
+  const conversation = await prisma.$transaction(async (tx) => {
+    const created = await tx.conversation.create({ data: { type: "DIRECT" } });
+    await tx.conversationParticipant.createMany({
+      data: [
+        { conversationId: created.id, ...mine },
+        { conversationId: created.id, ...theirs },
+      ],
+    });
+    return tx.conversation.findUnique({
+      where: { id: created.id },
+      include: {
+        participants: {
+          include: {
+            user: { select: { id: true, name: true, role: true, profilePhoto: true } },
+            student: { select: { id: true, name: true, enrollmentNumber: true, profilePhoto: true } },
+          },
+        },
+      },
+    });
+  });
+
+  res.status(201).json(conversation);
+});
+
 module.exports = {
   getConversations,
+  getContacts,
+  openDirectConversation,
   getMessages,
   openProjectConversation,
   sendMessage,

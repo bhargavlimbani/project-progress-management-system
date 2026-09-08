@@ -99,6 +99,19 @@ const student = (d) =>
     .required("semesterId", d.semesterId, "Semester")
     .result();
 
+/**
+ * Partial update: only the fields actually supplied are checked, but they are
+ * held to the same rules as on create. Without this, PUT could set a malformed
+ * email or a 5-digit mobile that POST would have rejected.
+ */
+const studentUpdate = (d) =>
+  checker()
+    .custom("name", d.name !== undefined && String(d.name).trim() === "", "Student name cannot be empty.")
+    .email("email", d.email, "Email")
+    .mobile("mobile", d.mobile, "Mobile number")
+    .maxLength("grNumber", d.grNumber, 30, "GR number")
+    .result();
+
 // ── Project & idea ────────────────────────────────────────────────────────
 const project = (d) =>
   checker()
@@ -301,6 +314,7 @@ module.exports = {
   mentor,
   domain,
   student,
+  studentUpdate,
   project,
   projectIdea,
   ideaReview,

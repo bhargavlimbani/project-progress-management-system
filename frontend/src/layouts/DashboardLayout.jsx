@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar from "../components/layout/Sidebar.jsx";
 import Navbar from "../components/layout/Navbar.jsx";
+import ErrorBoundary from "../components/ui/ErrorBoundary.jsx";
 
 export default function DashboardLayout() {
   const [collapsed, setCollapsed] = useState(false);
@@ -50,7 +51,10 @@ export default function DashboardLayout() {
           onMobileMenuOpen={() => setMobileOpen(true)}
         />
         <main className="page-content">
-          <Outlet />
+          {/* Keyed on the path so navigating away clears a crashed page. */}
+          <ErrorBoundary resetKey={location.pathname}>
+            <Outlet />
+          </ErrorBoundary>
         </main>
       </div>
     </div>

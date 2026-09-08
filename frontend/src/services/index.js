@@ -159,6 +159,10 @@ export const notificationApi = {
 // ── Chat ──────────────────────────────────────────────────────────────────
 export const chatApi = {
   conversations: () => api.get("/messages/conversations"),
+  // People the caller may start a one-to-one thread with.
+  contacts: (q) => api.get("/messages/contacts", { params: q ? { q } : undefined }),
+  // Idempotent: returns the existing thread if one already exists.
+  openDirect: (kind, id) => api.post("/messages/conversations/direct", { kind, id }),
   messages: (conversationId) => api.get(`/messages/conversations/${conversationId}`),
   openForProject: (projectId) => api.post(`/messages/conversations/project/${projectId}`),
   send: (conversationId, formData) =>

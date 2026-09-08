@@ -118,6 +118,22 @@ async function refreshToken(req, res, next) {
     if (!refreshToken) return res.status(400).json({ message: "Refresh token required." });
 
     const payload = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+
+    // Re-check the account against the database. A refresh token stays
+    // cryptographically valid for 7 days, so without this a deactivated or
+    // deleted account could keep minting fresh access tokens.
+    const stillActive =
+      payload.role === "STUDENT"
+        ? await prisma.student.findUnique({ where: { id: payload.id }, select: { isActive: true } })
+        : await prisma.user.findUnique({ where: { id: payload.id }, select: { isActive: true } });
+
+    if (!stillActive) {
+      return res.status(401).json({ message: "Account no longer exists." });
+    }
+    if (!stillActive.isActive) {
+      return res.status(403).json({ message: "Your account has been deactivated." });
+    }
+
     // Remove iat/exp before re-signing
     const { iat, exp, ...tokenData } = payload;
     const newAccessToken = jwt.sign(tokenData, process.env.JWT_ACCESS_SECRET, { expiresIn: "8h" });

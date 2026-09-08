@@ -15,8 +15,15 @@ function fileFilter(req, file, cb) {
   if (!ALLOWED_EXTENSIONS.includes(ext)) {
     return cb(new Error("Only .xlsx and .csv files are supported."));
   }
-  if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-    return cb(new Error("Unrecognized file type."));
+  /**
+   * The extension check above is the meaningful gate. Browsers and OSes are
+   * inconsistent about spreadsheet MIME types — a .xlsx can arrive as
+   * application/octet-stream depending on the client — so rejecting on MIME
+   * alone produced false "Unrecognized file type" failures on valid files.
+   */
+  const TOLERATED = [...ALLOWED_MIME_TYPES, "application/octet-stream", "text/plain"];
+  if (!TOLERATED.includes(file.mimetype)) {
+    return cb(new Error(`Unrecognized file type: ${file.mimetype}. Upload a .xlsx or .csv file.`));
   }
   cb(null, true);
 }

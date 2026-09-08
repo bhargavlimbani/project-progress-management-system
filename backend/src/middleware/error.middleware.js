@@ -33,8 +33,14 @@ function errorHandler(err, req, res, next) {
     case "P2025":
       return res.status(404).json({ message: "Record not found." });
     case "P2003":
+      // P2003 fires in BOTH directions: a child still referencing this row,
+      // and this row pointing at a parent that does not exist. The old message
+      // only described the first and read as the opposite of what happened
+      // when creating a record with a bad foreign key.
       return res.status(409).json({
-        message: "This record is still referenced by other data and cannot be changed.",
+        message:
+          "A related record is missing or still in use. Check that any linked " +
+          "records exist, and that nothing else still depends on this one.",
       });
     case "P1001":
       return res.status(503).json({
@@ -42,6 +48,18 @@ function errorHandler(err, req, res, next) {
       });
     default:
       break;
+  }
+
+  /**
+   * A malformed value (e.g. `NaN` from parseInt on a non-numeric field, or a
+   * wrong type) fails Prisma's own argument validation. That is bad input, not
+   * a server fault — answer 400 rather than leaking a query stack in a 500.
+   */
+  if (err.name === "PrismaClientValidationError") {
+    return res.status(400).json({
+      message: "One or more fields have an invalid value or type.",
+      ...(env.nodeEnv !== "production" && { details: { prisma: err.message.split("\n").pop() } }),
+    });
   }
 
   // Prisma couldn't reach or authenticate against the database. This is an

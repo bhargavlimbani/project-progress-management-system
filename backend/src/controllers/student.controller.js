@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const prisma = require("../config/prisma");
 const { logActivity } = require("../services/activityLog.service");
 const { toCsv, rowsToXlsx, CONTENT_TYPES } = require("../services/export.service");
+const { stripStudentList, SAFE_USER_SELECT } = require("../utils/safeFields");
 
 async function getStudents(req, res, next) {
   try {
@@ -35,7 +36,14 @@ async function getStudents(req, res, next) {
       prisma.student.count({ where }),
     ]);
 
-    res.json({ students, total, page: parseInt(page), totalPages: Math.ceil(total / parseInt(limit)) });
+    // The query uses `include`, so it cannot restrict its own scalar columns —
+    // strip passwordHash and activationToken before serializing.
+    res.json({
+      students: stripStudentList(students),
+      total,
+      page: parseInt(page),
+      totalPages: Math.ceil(total / parseInt(limit)),
+    });
   } catch (err) { next(err); }
 }
 
@@ -49,7 +57,12 @@ async function getStudentById(req, res, next) {
         projectMembers: {
           include: {
             project: {
-              include: { subject: true, faculty: { include: { user: true } }, mentor: { include: { user: true } }, domain: true },
+              include: {
+                subject: true,
+                faculty: { include: { user: { select: SAFE_USER_SELECT } } },
+                mentor: { include: { user: { select: SAFE_USER_SELECT } } },
+                domain: true,
+              },
             },
           },
         },
@@ -64,7 +77,7 @@ async function getStudentById(req, res, next) {
 
 async function createStudent(req, res, next) {
   try {
-    const { enrollmentNumber, name, email, mobile, rollNumber, academicYearId, semesterId, password } = req.body;
+    const { enrollmentNumber, name, email, mobile, grNumber, academicYearId, semesterId, password } = req.body;
     if (!enrollmentNumber || !name || !email || !mobile || !academicYearId || !semesterId) {
       return res.status(400).json({ message: "enrollmentNumber, name, email, mobile, academicYearId, semesterId are required." });
     }
@@ -79,7 +92,7 @@ async function createStudent(req, res, next) {
 
     const student = await prisma.student.create({
       data: {
-        enrollmentNumber, name, email, mobile, rollNumber,
+        enrollmentNumber, name, email, mobile, grNumber,
         academicYearId, semesterId, passwordHash,
         activationToken, isActivated: !!password,
       },
@@ -94,14 +107,14 @@ async function createStudent(req, res, next) {
 async function updateStudent(req, res, next) {
   try {
     const { id } = req.params;
-    const { name, email, mobile, rollNumber, isActive, academicYearId, semesterId } = req.body;
+    const { name, email, mobile, grNumber, isActive, academicYearId, semesterId } = req.body;
     const student = await prisma.student.update({
       where: { id },
       data: {
         ...(name && { name }),
         ...(email && { email }),
         ...(mobile && { mobile }),
-        ...(rollNumber !== undefined && { rollNumber }),
+        ...(grNumber !== undefined && { grNumber }),
         ...(isActive !== undefined && { isActive }),
         ...(academicYearId && { academicYearId }),
         ...(semesterId && { semesterId }),
@@ -189,7 +202,7 @@ async function exportStudents(req, res, next) {
         : 0;
       return {
         "Enrollment Number": s.enrollmentNumber,
-        "Roll Number": s.rollNumber || "",
+        "GR Number": s.grNumber || "",
         "Student Name": s.name,
         Email: s.email,
         Mobile: s.mobile,

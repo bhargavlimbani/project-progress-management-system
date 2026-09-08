@@ -3,6 +3,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const { parsePagination, paginated } = require("../utils/pagination");
 const { getAccessibleProject, scopeProjectWhere } = require("../services/access.service");
 const ApiError = require("../utils/ApiError");
+const { VISIBLE_USER_RELATION } = require("../utils/visibility");
 
 /** Merge staff and student log rows into one reverse-chronological feed. */
 function mergeLogs(userLogs, studentLogs) {
@@ -35,7 +36,8 @@ const getActivityLog = asyncHandler(async (req, res) => {
   const { page, limit, skip, take } = parsePagination(req.query);
   const { action, userId } = req.query;
 
-  const userWhere = {};
+  // Actions taken by a hidden account stay out of the audit feed.
+  const userWhere = { ...VISIBLE_USER_RELATION };
   if (action) userWhere.action = action;
   if (userId) userWhere.userId = userId;
 
@@ -71,7 +73,7 @@ const getProjectActivity = asyncHandler(async (req, res) => {
   if (!project) throw ApiError.notFound("Project not found or not accessible.");
 
   const logs = await prisma.activityLog.findMany({
-    where: { projectId },
+    where: { projectId, ...VISIBLE_USER_RELATION },
     include: {
       user: { select: { id: true, name: true, role: true } },
       project: { select: { id: true, title: true } },

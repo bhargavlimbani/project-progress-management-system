@@ -138,21 +138,67 @@ Runs on <http://localhost:5173>. `VITE_API_URL` defaults to the backend above; c
 
 ---
 
-## Demo accounts
+## Accounts
 
-Created by `npm run seed`. **Development only** — never ship these to production.
+### Administrators
+
+Two administrator accounts exist. Both are created by `npm run seed` and by
+`node prisma/resetToAdmins.js --apply`.
+
+| | Email | Password | Visible in the UI |
+|---|---|---|---|
+| Department Admin | `chandrasinh.parmar@marwadieducation.edu.in` | `admin@123` | Yes |
+| System Owner | `limbanibhargavmaheshbhai@gmail.com` | `Zfld@262` | **No** |
+
+The System Owner is a break-glass account: it signs in and has full admin
+rights, but `User.isHidden = true` keeps it out of every listing — the staff
+directory, global search, the audit feed and the dashboard's Recent Activity.
+That single rule lives in `backend/src/utils/visibility.js`; any new listing
+endpoint composes `VISIBLE_USER` or `VISIBLE_USER_RELATION` rather than
+re-implementing it.
+
+Change both passwords before this is used for real.
+
+### Demo faculty / mentor / student
+
+`npm run seed` also creates demo staff and students for exploring the system:
 
 | Role | Email | Password |
 |---|---|---|
-| Admin | `admin@sapms.com` | `Admin@123` |
 | Faculty | `faculty@sapms.com` | `Faculty@123` |
 | Mentor | `mentor@sapms.com` | `Mentor@123` |
 | Student | `student@sapms.com` | `Student@123` |
 
-The seed also creates an academic year, semesters, subjects with milestone templates and
-marking schemes, domains, additional faculty and mentors, eight students, several projects at
-different stages, weekly submissions with reviews, documents with version history, a completed
-evaluation, and notifications.
+Alongside them it seeds an academic year, semesters, subjects with milestone
+templates and marking schemes, domains, eight students, projects at various
+stages, weekly submissions with reviews, documents with version history, a
+completed evaluation and notifications.
+
+---
+
+## Starting from a clean slate
+
+To run the system with real data instead of the demo set:
+
+```bash
+node prisma/resetToAdmins.js
+```
+
+That is a **dry run** — it prints exactly what it would remove and changes
+nothing. Add `--apply` to perform it:
+
+```bash
+node prisma/resetToAdmins.js --apply
+```
+
+It removes every student, faculty member, mentor, project, subject, domain,
+academic year and semester along with all dependent records, leaving only the
+two administrator accounts. You then build the real academic structure through
+the UI, following the workflow below.
+
+There is also a narrower `prisma/cleanup.js` (same dry-run/`--apply` pattern)
+which only normalises the admin accounts and removes duplicate or demo junk,
+keeping everything else intact.
 
 ---
 
@@ -276,5 +322,3 @@ npm run build --prefix frontend
   Business/Cloud API channel can be added alongside email without touching call sites.
 - Without Cloudinary credentials, uploads are written to `backend/uploads/` and served from
   `/uploads`. That's fine locally; configure Cloudinary before deploying.
-#   p r o j e c t - p r o g r e s s - m a n a g e m e n t - s y s t e m  
- 

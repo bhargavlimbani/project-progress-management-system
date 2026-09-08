@@ -3,16 +3,33 @@ const { logActivity } = require("../services/activityLog.service");
 const { notifyUser, notifyStudent, notifyProjectTeam } = require("../services/notification.service");
 const { recommendMentor, getMentorsForDomain } = require("../services/mentorRecommendation.service");
 const { calculateProgress } = require("../services/progress.service");
-const { scopeProjectWhere } = require("../services/access.service");
+const { scopeProjectWhere, getAccessibleProject } = require("../services/access.service");
+const { SAFE_USER_SELECT, STUDENT_SUMMARY_SELECT } = require("../utils/safeFields");
 
 const PROJECT_INCLUDE = {
   subject: true,
   academicYear: true,
-  faculty: { include: { user: true } },
-  mentor: { include: { user: true } },
+  // `user: true` / `student: true` would serialize passwordHash (and the
+  // student activation token) into every project response — always select.
+  faculty: { include: { user: { select: SAFE_USER_SELECT } } },
+  mentor: { include: { user: { select: SAFE_USER_SELECT } } },
   domain: true,
-  members: { include: { student: true } },
-  idea: true,
+  members: { include: { student: { select: STUDENT_SUMMARY_SELECT } } },
+  // Reviews must be nested here — the Overview tab renders the approval
+  // history from project.idea.reviews, and without this it always reads
+  // "No review recorded yet" even when reviews exist.
+  idea: {
+    include: {
+      domain: true,
+      reviews: {
+        include: {
+          reviewer: { include: { user: { select: { name: true } } } },
+          mentorReviewer: { include: { user: { select: { name: true } } } },
+        },
+        orderBy: { reviewedAt: "desc" },
+      },
+    },
+  },
   milestones: { orderBy: { weekNumber: "asc" } },
   _count: { select: { weeklyProgress: true, documents: true } },
 };
@@ -85,7 +102,14 @@ async function getProjectById(req, res, next) {
       include: {
         ...PROJECT_INCLUDE,
         weeklyProgress: {
-          include: { reviews: { include: { mentor: { include: { user: true } }, faculty: { include: { user: true } } } } },
+          include: {
+            reviews: {
+              include: {
+                mentor: { include: { user: { select: SAFE_USER_SELECT } } },
+                faculty: { include: { user: { select: SAFE_USER_SELECT } } },
+              },
+            },
+          },
           orderBy: { weekNumber: "asc" },
         },
         documents: {
@@ -161,6 +185,12 @@ async function updateProject(req, res, next) {
   try {
     const { id } = req.params;
     const { title, status, currentWeek, startDate, endDate, domainId, mentorId } = req.body;
+
+    // Write access must be at least as tight as read access. Without this a
+    // caller who gets 404 on GET could still PUT the same id successfully.
+    const existing = await getAccessibleProject(req.user, id);
+    if (!existing) return res.status(404).json({ message: "Project not found." });
+
     const project = await prisma.project.update({
       where: { id },
       data: {
@@ -185,6 +215,15 @@ async function submitProjectIdea(req, res, next) {
 
     const project = await prisma.project.findUnique({ where: { id: projectId }, include: { members: true } });
     if (!project) return res.status(404).json({ message: "Project not found." });
+
+    // Only a member of this project may submit or revise its idea — otherwise
+    // any student could overwrite another team's submission.
+    if (req.user.role === "STUDENT") {
+      const isMember = project.members.some((m) => m.studentId === req.user.id);
+      if (!isMember) {
+        return res.status(403).json({ message: "You are not a member of this project." });
+      }
+    }
 
     const idea = await prisma.projectIdea.upsert({
       where: { projectId },

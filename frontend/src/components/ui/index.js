@@ -14,6 +14,7 @@ export { default as NotificationDropdown } from "./NotificationDropdown.jsx";
 export { default as EmptyState } from "./EmptyState.jsx";
 export { default as Tabs } from "./Tabs.jsx";
 export { default as PageHeader } from "./PageHeader.jsx";
+export { default as ErrorBoundary } from "./ErrorBoundary.jsx";
 export {
   default as Skeleton,
   SkeletonText,

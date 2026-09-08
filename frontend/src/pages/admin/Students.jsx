@@ -16,7 +16,7 @@ import BulkImportWizard from "../../features/students/BulkImportWizard.jsx";
 const emptyForm = {
   name: "",
   enrollmentNumber: "",
-  rollNumber: "",
+  grNumber: "",
   email: "",
   mobile: "",
   academicYearId: "",
@@ -113,7 +113,7 @@ function Roster() {
     setForm({
       name: student.name,
       enrollmentNumber: student.enrollmentNumber,
-      rollNumber: student.rollNumber || "",
+      grNumber: student.grNumber || "",
       email: student.email,
       mobile: student.mobile,
       academicYearId: student.academicYearId,
@@ -445,7 +445,7 @@ function Roster() {
               <input
                 className="form-input"
                 required
-                placeholder="Riya Patel"
+                placeholder="Bhargav Limbani"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
@@ -457,7 +457,7 @@ function Roster() {
                 className="form-input"
                 required
                 disabled={Boolean(editing?.id)}
-                placeholder="22ICT002"
+                placeholder="92301733029"
                 value={form.enrollmentNumber}
                 onChange={(e) => setForm((f) => ({ ...f, enrollmentNumber: e.target.value }))}
               />
@@ -469,7 +469,7 @@ function Roster() {
                 className="form-input"
                 type="email"
                 required
-                placeholder="riya.patel@university.ac.in"
+                placeholder="bhargav.limbani121771@marwadiuniversity.ac.in"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               />
@@ -480,19 +480,19 @@ function Roster() {
               <input
                 className="form-input"
                 required
-                placeholder="9876543210"
+                placeholder="6355990290"
                 value={form.mobile}
                 onChange={(e) => setForm((f) => ({ ...f, mobile: e.target.value }))}
               />
             </div>
 
             <div className="form-group">
-              <label className="form-label">Roll Number (optional)</label>
+              <label className="form-label">GR Number (optional)</label>
               <input
                 className="form-input"
-                placeholder="ICT-07"
-                value={form.rollNumber}
-                onChange={(e) => setForm((f) => ({ ...f, rollNumber: e.target.value }))}
+                placeholder="121771"
+                value={form.grNumber}
+                onChange={(e) => setForm((f) => ({ ...f, grNumber: e.target.value }))}
               />
             </div>
 

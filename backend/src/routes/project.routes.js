@@ -15,7 +15,7 @@ router.get("/", getProjects);
 router.get("/my-projects", authorize("STUDENT"), getStudentProjects);
 router.get("/:id", getProjectById);
 router.post("/", createProject);
-router.put("/:id", updateProject);
+router.put("/:id", authorize("ADMIN", "FACULTY", "MENTOR"), updateProject);
 router.delete("/:id", authorize("ADMIN"), deleteProject);
 
 // Project idea workflow

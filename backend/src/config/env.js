@@ -54,7 +54,17 @@ const env = {
 
   rateLimit: {
     windowMinutes: Number(process.env.RATE_LIMIT_WINDOW_MINUTES || 15),
-    max: Number(process.env.RATE_LIMIT_MAX || 500),
+    /**
+     * Broad API ceiling. A single dashboard load fires ~8 requests and an
+     * active admin session many more, so the production default is generous
+     * and development is more generous still — this limiter exists to blunt
+     * scraping and runaway clients, not to police normal use. Brute-force
+     * protection is the separate, much tighter authMax below.
+     */
+    max: Number(
+      process.env.RATE_LIMIT_MAX ||
+        (process.env.NODE_ENV === "production" ? 1000 : 10000)
+    ),
     authMax: Number(process.env.AUTH_RATE_LIMIT_MAX || 20),
   },
 };
