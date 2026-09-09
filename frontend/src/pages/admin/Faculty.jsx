@@ -318,7 +318,7 @@ export default function Faculty() {
               <input
                 className="form-input"
                 required
-                placeholder="Dr. Priya Mehta"
+                placeholder="Faculty name"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
@@ -342,7 +342,7 @@ export default function Faculty() {
                 type="email"
                 required
                 disabled={Boolean(editing?.id)}
-                placeholder="priya.mehta@college.edu"
+                placeholder="faculty@marwadiuniversity.edu.in"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               />

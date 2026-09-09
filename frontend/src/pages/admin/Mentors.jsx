@@ -347,7 +347,7 @@ export default function Mentors() {
               <input
                 className="form-input"
                 required
-                placeholder="Mr. Arjun Nair"
+                placeholder="Mentor name"
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               />
@@ -371,7 +371,7 @@ export default function Mentors() {
                 type="email"
                 required
                 disabled={Boolean(editing?.id)}
-                placeholder="arjun.nair@college.edu"
+                placeholder="mentor@marwadiuniversity.edu.in"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               />
