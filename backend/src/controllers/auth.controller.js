@@ -157,6 +157,7 @@ async function getMe(req, res, next) {
         name: student.name,
         email: student.email,
         role: "STUDENT",
+        mobile: student.mobile,
         enrollmentNumber: student.enrollmentNumber,
         profilePhoto: student.profilePhoto,
         semester: student.semester?.number,

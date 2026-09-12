@@ -99,7 +99,10 @@ const updateOwnProfile = asyncHandler(async (req, res) => {
   if (role === "STUDENT") {
     const student = await prisma.student.update({
       where: { id },
-      data: { ...(name && { name }), ...(mobile && { mobile }) },
+      data: {
+        ...(name && { name }),
+        ...(mobile !== undefined && { mobile }),
+      },
     });
     const { passwordHash, activationToken, ...safe } = student;
     return res.json(safe);
@@ -111,20 +114,36 @@ const updateOwnProfile = asyncHandler(async (req, res) => {
     select: SAFE_USER,
   });
 
-  if (role === "FACULTY" && (mobile || designation)) {
+  if (role === "FACULTY") {
     await prisma.faculty.update({
       where: { userId: id },
-      data: { ...(mobile && { mobile }), ...(designation && { designation }) },
+      data: {
+        ...(mobile !== undefined && { mobile }),
+        ...(designation !== undefined && { designation }),
+      },
     });
   }
-  if (role === "MENTOR" && (mobile || expertise)) {
+  if (role === "MENTOR") {
     await prisma.mentor.update({
       where: { userId: id },
-      data: { ...(mobile && { mobile }), ...(expertise && { expertise }) },
+      data: {
+        ...(mobile !== undefined && { mobile }),
+        ...(expertise !== undefined && { expertise }),
+      },
     });
   }
 
-  res.json(user);
+  // Return the updated user with faculty/mentor sub-profile so
+  // the frontend can sync mobile and other profile fields immediately.
+  const fullUser = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      ...SAFE_USER,
+      faculty: true,
+      mentor: true,
+    },
+  });
+  res.json(fullUser);
 });
 
 /** Upload/replace the signed-in user's avatar. */

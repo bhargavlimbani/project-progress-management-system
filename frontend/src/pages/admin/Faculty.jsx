@@ -2,6 +2,7 @@ import { useState } from "react";
 import toast from "react-hot-toast";
 import {
   Users, Plus, Pencil, Trash2, KeyRound, FolderKanban, Mail, Phone, BookOpen, X,
+  UserCheck, Briefcase,
 } from "lucide-react";
 import { facultyApi, subjectApi, userApi } from "../../services/index.js";
 import { useApiAll } from "../../hooks/useApi.js";
@@ -37,6 +38,8 @@ export default function Faculty() {
   const [form, setForm] = useState(emptyForm);
   const [deleting, setDeleting] = useState(null);
   const [resetting, setResetting] = useState(null);
+  const [promoting, setPromoting] = useState(null); // faculty being promoted to mentor
+  const [promoteForm, setPromoteForm] = useState({ mentorId: "", expertise: "" });
   const [newPassword, setNewPassword] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -117,6 +120,33 @@ export default function Faculty() {
       refetch();
     } catch (err) {
       toast.error(apiErrorMessage(err));
+    }
+  };
+
+  const openPromote = (member) => {
+    setPromoteForm({ mentorId: "", expertise: "" });
+    setPromoting(member);
+  };
+
+  const submitPromote = async (e) => {
+    e.preventDefault();
+    if (!promoteForm.mentorId.trim()) {
+      toast.error("Mentor ID is required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await facultyApi.promoteToMentor(promoting.id, {
+        mentorId: promoteForm.mentorId.trim(),
+        expertise: promoteForm.expertise.trim() || undefined,
+      });
+      toast.success(`${promoting.user.name} promoted to Mentor successfully!`);
+      setPromoting(null);
+      refetch();
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -217,39 +247,55 @@ export default function Faculty() {
       key: "actions",
       label: "Actions",
       align: "right",
-      width: 150,
+      width: 190,
       sortable: false,
-      render: (f) => (
-        <div className="flex gap-2" style={{ justifyContent: "flex-end" }}>
-          <button
-            type="button"
-            className="btn-icon-sm"
-            title="Reset password"
-            onClick={() => setResetting(f)}
-            style={{ color: "var(--yellow-400)" }}
-          >
-            <KeyRound size={15} />
-          </button>
-          <button
-            type="button"
-            className="btn-icon-sm"
-            title="Edit"
-            onClick={() => openEdit(f)}
-            style={{ color: "var(--slate-300)" }}
-          >
-            <Pencil size={15} />
-          </button>
-          <button
-            type="button"
-            className="btn-icon-sm"
-            title="Delete"
-            onClick={() => setDeleting(f)}
-            style={{ color: "var(--red-400)" }}
-          >
-            <Trash2 size={15} />
-          </button>
-        </div>
-      ),
+      render: (f) => {
+        const alreadyMentor = f.user?.role === "MENTOR";
+        return (
+          <div className="flex gap-2" style={{ justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              className="btn-icon-sm"
+              title={alreadyMentor ? "Already a Mentor" : "Add as Mentor"}
+              onClick={() => !alreadyMentor && openPromote(f)}
+              style={{
+                color: alreadyMentor ? "var(--green-400)" : "var(--blue-400)",
+                cursor: alreadyMentor ? "default" : "pointer",
+                opacity: alreadyMentor ? 0.7 : 1,
+              }}
+            >
+              <UserCheck size={15} />
+            </button>
+            <button
+              type="button"
+              className="btn-icon-sm"
+              title="Reset password"
+              onClick={() => setResetting(f)}
+              style={{ color: "var(--yellow-400)" }}
+            >
+              <KeyRound size={15} />
+            </button>
+            <button
+              type="button"
+              className="btn-icon-sm"
+              title="Edit"
+              onClick={() => openEdit(f)}
+              style={{ color: "var(--slate-300)" }}
+            >
+              <Pencil size={15} />
+            </button>
+            <button
+              type="button"
+              className="btn-icon-sm"
+              title="Delete"
+              onClick={() => setDeleting(f)}
+              style={{ color: "var(--red-400)" }}
+            >
+              <Trash2 size={15} />
+            </button>
+          </div>
+        );
+      },
     },
   ];
 
@@ -493,6 +539,77 @@ export default function Faculty() {
         confirmLabel="Delete Faculty"
         confirmPhrase={deleting?.facultyId}
       />
+
+      {/* Promote to Mentor */}
+      <Modal
+        open={Boolean(promoting)}
+        onClose={() => setPromoting(null)}
+        title="Add as Mentor"
+        subtitle={
+          promoting
+            ? `${promoting.user.name} will be promoted from Faculty to Mentor. They'll log in with the same email and password but with mentor access.`
+            : undefined
+        }
+        width={480}
+        footer={
+          <>
+            <button type="button" className="btn btn-secondary" onClick={() => setPromoting(null)}>
+              Cancel
+            </button>
+            <button type="submit" form="promote-form" className="btn btn-primary" disabled={saving}>
+              <UserCheck size={15} />
+              {saving ? "Promoting…" : "Confirm Promotion"}
+            </button>
+          </>
+        }
+      >
+        {/* Info banner */}
+        <div
+          style={{
+            display: "flex",
+            gap: 12,
+            padding: "12px 14px",
+            marginBottom: 20,
+            borderRadius: 10,
+            background: "rgba(59,130,246,0.08)",
+            border: "1px solid rgba(59,130,246,0.2)",
+            fontSize: "0.8rem",
+            color: "var(--blue-300)",
+            lineHeight: 1.55,
+          }}
+        >
+          <Briefcase size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>
+            This action changes the account role to <strong>MENTOR</strong>. The faculty record stays
+            intact — the person just gains mentor-level access and will appear in the Mentors list.
+          </span>
+        </div>
+
+        <form id="promote-form" onSubmit={submitPromote}>
+          <div className="form-grid">
+            <div className="form-group">
+              <label className="form-label">Mentor ID <span style={{ color: "var(--red-400)" }}>*</span></label>
+              <input
+                className="form-input"
+                required
+                placeholder="e.g. MNT001"
+                value={promoteForm.mentorId}
+                onChange={(e) => setPromoteForm((f) => ({ ...f, mentorId: e.target.value }))}
+              />
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Expertise <span style={{ fontWeight: 400, color: "var(--slate-500)" }}>(optional)</span></label>
+              <input
+                className="form-input"
+                placeholder="e.g. Machine Learning, Web Dev"
+                value={promoteForm.expertise}
+                onChange={(e) => setPromoteForm((f) => ({ ...f, expertise: e.target.value }))}
+              />
+            </div>
+          </div>
+        </form>
+      </Modal>
     </>
   );
 }
