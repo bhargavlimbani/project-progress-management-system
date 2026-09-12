@@ -44,6 +44,7 @@ export const facultyApi = {
   update: (id, data) => api.put(`/faculty/${id}`, data),
   delete: (id) => api.delete(`/faculty/${id}`),
   resetPassword: (id, data) => api.post(`/faculty/${id}/reset-password`, data),
+  promoteToMentor: (id, data) => api.post(`/faculty/${id}/promote-to-mentor`, data),
 };
 
 // ── Mentors ───────────────────────────────────────────────────────────────

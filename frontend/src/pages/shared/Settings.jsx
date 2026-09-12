@@ -66,7 +66,13 @@ function ProfileSettings() {
     setSaving(true);
     try {
       const { data } = await userApi.updateProfile(form);
-      updateUser({ name: data.name ?? form.name });
+      // Update everything that might have changed so the UI stays in sync
+      updateUser({
+        name: data.name ?? form.name,
+        mobile: data.mobile ?? form.mobile,
+        ...(data.faculty && { faculty: data.faculty }),
+        ...(data.mentor  && { mentor:  data.mentor  }),
+      });
       toast.success("Profile updated.");
     } catch (err) {
       toast.error(apiErrorMessage(err));

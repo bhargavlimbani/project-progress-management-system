@@ -7,7 +7,7 @@ async function getFaculty(req, res, next) {
   try {
     const faculty = await prisma.faculty.findMany({
       include: {
-        user: { select: { id: true, name: true, email: true, isActive: true, profilePhoto: true, createdAt: true } },
+        user: { select: { id: true, name: true, email: true, role: true, isActive: true, profilePhoto: true, createdAt: true } },
         subjects: { include: { subject: true } },
         _count: { select: { projects: true } },
       },
@@ -130,4 +130,70 @@ async function resetFacultyPassword(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { getFaculty, getFacultyById, createFaculty, updateFaculty, deleteFaculty, resetFacultyPassword };
+/**
+ * Promote a faculty member to also be a Mentor.
+ * Creates a Mentor record linked to the same User and switches the User.role
+ * from FACULTY → MENTOR so they can log in with mentor privileges.
+ */
+async function promoteToMentor(req, res, next) {
+  try {
+    const { id } = req.params;
+    const { mentorId, expertise } = req.body;
+
+    if (!mentorId) {
+      return res.status(400).json({ message: "mentorId is required." });
+    }
+
+    const faculty = await prisma.faculty.findUnique({
+      where: { id },
+      include: { user: true },
+    });
+    if (!faculty) return res.status(404).json({ message: "Faculty not found." });
+
+    // Check if this user already has a Mentor record
+    const existingMentor = await prisma.mentor.findUnique({
+      where: { userId: faculty.userId },
+    });
+    if (existingMentor) {
+      return res.status(409).json({ message: "This faculty member is already registered as a mentor." });
+    }
+
+    // Check mentorId uniqueness
+    const mentorIdTaken = await prisma.mentor.findUnique({ where: { mentorId } });
+    if (mentorIdTaken) {
+      return res.status(409).json({ message: `Mentor ID "${mentorId}" is already in use.` });
+    }
+
+    const mentor = await prisma.$transaction(async (tx) => {
+      // Create the Mentor profile
+      const created = await tx.mentor.create({
+        data: {
+          userId: faculty.userId,
+          mentorId,
+          mobile: faculty.mobile,
+          expertise: expertise || null,
+        },
+      });
+      // Switch the user's role to MENTOR
+      await tx.user.update({
+        where: { id: faculty.userId },
+        data: { role: "MENTOR" },
+      });
+      return created;
+    });
+
+    await logActivity({
+      userId: req.user.id,
+      action: "PROMOTE_FACULTY_TO_MENTOR",
+      entityType: "Mentor",
+      entityId: mentor.id,
+    });
+
+    res.status(201).json({
+      message: `${faculty.user.name} has been promoted to mentor successfully.`,
+      mentor,
+    });
+  } catch (err) { next(err); }
+}
+
+module.exports = { getFaculty, getFacultyById, createFaculty, updateFaculty, deleteFaculty, resetFacultyPassword, promoteToMentor };
