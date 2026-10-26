@@ -177,8 +177,11 @@ export const chatApi = {
 // ── Meetings & presentations ──────────────────────────────────────────────
 export const meetingApi = {
   list: (params) => api.get("/meetings", { params }),
+  get: (id) => api.get(`/meetings/${id}`),
   create: (data) => api.post("/meetings", data),
   update: (id, data) => api.put(`/meetings/${id}`, data),
+  cancel: (id, data) => api.post(`/meetings/${id}/cancel`, data),
+  complete: (id, data) => api.post(`/meetings/${id}/complete`, data),
   delete: (id) => api.delete(`/meetings/${id}`),
 };
 
@@ -198,6 +201,26 @@ export const evaluationApi = {
   getCriteria: (subjectId) => api.get(`/evaluations/criteria/${subjectId}`),
   upsertCriteria: (subjectId, criteria) =>
     api.put(`/evaluations/criteria/${subjectId}`, { criteria }),
+  downloadStudentPdf: (projectId, studentId) =>
+    downloadFile(`/evaluations/project/${projectId}/student/${studentId}/pdf`, { fallbackName: `evaluation-${studentId}.pdf` }),
+  downloadProjectPdf: (projectId) =>
+    downloadFile(`/evaluations/project/${projectId}/pdf`, { fallbackName: `project-evaluation-${projectId}.pdf` }),
+  shareStudentResult: (projectId, studentId, data) =>
+    api.post(`/evaluations/project/${projectId}/student/${studentId}/share`, data),
+};
+
+// ── Settings & Institutional Rules ────────────────────────────────────────
+export const settingApi = {
+  get: () => api.get("/settings"),
+  update: (data) => api.put("/settings", data),
+};
+
+// ── Optional Attendance ───────────────────────────────────────────────────
+export const attendanceApi = {
+  get: (params) => api.get("/attendance", { params }),
+  record: (data) => api.post("/attendance", data),
+  summary: (subjectId) => api.get(`/attendance/summary/${subjectId}`),
+  getStudents: (subjectId) => api.get(`/attendance/students/${subjectId}`),
 };
 
 // ── Reports ───────────────────────────────────────────────────────────────

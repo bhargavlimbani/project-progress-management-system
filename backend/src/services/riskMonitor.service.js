@@ -2,6 +2,7 @@ const prisma = require("../config/prisma");
 const { calculateProgress } = require("./progress.service");
 const { notifyUser, notifyStudent } = require("./notification.service");
 const { sendTemplate } = require("./email.service");
+const { dispatchMultiChannel } = require("./channelNotification.service");
 const { env } = require("../config/env");
 
 /**
@@ -189,11 +190,80 @@ async function sendStaffDigests() {
   return result;
 }
 
+/**
+ * Send milestone deadline reminders for deadlines arriving within the next 48 hours.
+ */
+async function sendMilestoneDeadlineReminders() {
+  const now = new Date();
+  const in48h = new Date(now.getTime() + 48 * 60 * 60 * 1000);
+
+  const upcomingMilestones = await prisma.milestone.findMany({
+    where: {
+      status: { not: "APPROVED" },
+      endDate: { gte: now, lte: in48h },
+      reminderSentAt: null,
+    },
+    include: {
+      project: {
+        include: {
+          members: { include: { student: true } },
+        },
+      },
+    },
+  });
+
+  let count = 0;
+  for (const ms of upcomingMilestones) {
+    const formattedDate = new Date(ms.endDate).toLocaleDateString("en-IN", {
+      timeZone: ms.timeZone || "Asia/Kolkata",
+    });
+
+    for (const member of ms.project.members) {
+      await dispatchMultiChannel({
+        dedupKey: `milestone-deadline-48h-${ms.id}-${member.student.id}`,
+        channels: ["IN_APP", "EMAIL", "WHATSAPP"],
+        recipient: {
+          id: member.student.id,
+          studentId: member.student.id,
+          name: member.student.name,
+          email: member.student.email,
+          mobile: member.student.mobile,
+          isStudent: true,
+        },
+        title: "Deadline Approaching: Project Milestone",
+        body: `Milestone "${ms.title}" for "${ms.project.title}" is due on ${formattedDate}. Please submit your progress and evidence on time.`,
+        link: `/student/projects/${ms.projectId}`,
+        metadata: { notificationType: "DEADLINE_APPROACHING", milestoneId: ms.id },
+      });
+    }
+
+    await prisma.milestone.update({
+      where: { id: ms.id },
+      data: { reminderSentAt: new Date() },
+    });
+    count++;
+  }
+
+  return { milestoneRemindersSent: count };
+}
+
 /** Run everything — used by the daily timer and the admin trigger. */
 async function runDailyMonitor() {
   const sweep = await sweepProjects();
   const digests = await sendStaffDigests();
-  return { ...sweep, ...digests, ranAt: new Date().toISOString() };
+  const milestoneReminders = await sendMilestoneDeadlineReminders();
+  
+  // Lazy require to avoid circular dependency
+  const { sendUpcomingMeetingReminders } = require("../controllers/meeting.controller");
+  const meetingReminders = await sendUpcomingMeetingReminders().catch(() => ({ remindersSent: 0 }));
+
+  return {
+    ...sweep,
+    ...digests,
+    ...milestoneReminders,
+    meetingRemindersSent: meetingReminders.remindersSent,
+    ranAt: new Date().toISOString(),
+  };
 }
 
 /**
@@ -228,6 +298,7 @@ module.exports = {
   sweepProjects,
   sendWeeklyReminders,
   sendStaffDigests,
+  sendMilestoneDeadlineReminders,
   runDailyMonitor,
   startMonitorSchedule,
   weekFromStartDate,

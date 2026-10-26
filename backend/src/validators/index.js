@@ -279,8 +279,9 @@ const evaluationCriteria = (d) => {
 };
 
 const evaluationMarks = (d) => {
-  const list = Array.isArray(d.marks) ? d.marks : [];
-  const c = checker().custom("marks", list.length === 0, "Award marks for at least one criterion.");
+  const list = Array.isArray(d.marks) ? d.marks : (Array.isArray(d.teamMarks) ? d.teamMarks : []);
+  const hasStudentEvals = Array.isArray(d.studentEvaluations) && d.studentEvaluations.length > 0;
+  const c = checker().custom("marks", list.length === 0 && !hasStudentEvals, "Award marks for at least one criterion.");
 
   list.forEach((m, i) => {
     if (!m?.criteriaId) c.custom(`marks[${i}].criteriaId`, true, "Criterion is required.");

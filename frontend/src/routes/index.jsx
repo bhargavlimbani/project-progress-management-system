@@ -20,6 +20,7 @@ const Settings = lazy(() => import("../pages/shared/Settings.jsx"));
 const Chat = lazy(() => import("../pages/shared/Chat.jsx"));
 const WeeklyReviews = lazy(() => import("../pages/shared/WeeklyReviews.jsx"));
 const DocumentReviews = lazy(() => import("../pages/shared/DocumentReviews.jsx"));
+const Attendance = lazy(() => import("../pages/shared/Attendance.jsx"));
 
 // ── Admin ─────────────────────────────────────────────────────────────────
 const AdminDashboard = lazy(() => import("../pages/admin/AdminDashboard.jsx"));
@@ -163,6 +164,7 @@ export default function AppRoutes() {
           <Route path="reports" element={<Reports />} />
           <Route path="analytics" element={<Analytics />} />
           <Route path="notifications" element={<Notifications />} />
+          <Route path="attendance" element={<Attendance />} />
           <Route path="chat" element={<Chat />} />
           <Route path="profile" element={<Settings />} />
           <Route path="settings" element={<Settings />} />
@@ -185,6 +187,7 @@ export default function AppRoutes() {
           <Route path="documents" element={<DocumentReviews />} />
           <Route path="presentations" element={<Presentations />} />
           <Route path="evaluations" element={<Evaluations />} />
+          <Route path="attendance" element={<Attendance />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="chat" element={<Chat />} />
           <Route path="profile" element={<Settings />} />
@@ -227,6 +230,7 @@ export default function AppRoutes() {
           <Route path="progress" element={<StudentProgress />} />
           <Route path="documents" element={<MyProjects />} />
           <Route path="presentations" element={<Presentations />} />
+          <Route path="attendance" element={<Attendance />} />
           <Route path="chat" element={<Chat />} />
           <Route path="notifications" element={<Notifications />} />
           <Route path="profile" element={<Settings />} />

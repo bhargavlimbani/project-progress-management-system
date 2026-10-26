@@ -3,9 +3,9 @@ import { useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   Settings as SettingsIcon, User, KeyRound, ShieldCheck, Camera, Loader2,
-  Activity, Mail, RefreshCw, Eye, EyeOff,
+  Activity, Mail, RefreshCw, Eye, EyeOff, CheckSquare, Save
 } from "lucide-react";
-import { authApi, userApi, analyticsApi } from "../../services/index.js";
+import { authApi, userApi, analyticsApi, settingApi } from "../../services/index.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { apiErrorMessage, initials } from "../../utils/format.js";
 import { PageHeader, Tabs } from "../../components/ui/index.js";
@@ -515,6 +515,126 @@ function SystemSettings() {
           {running === "reminders" ? "Sending…" : "Send reminders now"}
         </button>
       </div>
+
+      {/* Institutional Rules & Optional Attendance Configuration */}
+      <InstitutionalRulesCard />
+    </div>
+  );
+}
+
+function InstitutionalRulesCard() {
+  const [settings, setSettings] = useState({
+    ATTENDANCE_ENABLED: "false",
+    MIN_ATTENDANCE_FOR_IDEA: "75",
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    settingApi.get()
+      .then(({ data }) => setSettings(data))
+      .catch((err) => toast.error(apiErrorMessage(err)))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      await settingApi.update(settings);
+      toast.success("Institutional settings saved successfully.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isAttendanceEnabled = settings.ATTENDANCE_ENABLED === "true";
+
+  if (loading) return <div className="glass-card" style={{ padding: 24 }}><Loader2 className="spin" size={20} /></div>;
+
+  return (
+    <div className="glass-card" style={{ padding: 24 }}>
+      <div className="flex items-start gap-3 mb-4">
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 11,
+            background: "rgba(168,85,247,0.14)",
+            border: "1px solid rgba(168,85,247,0.25)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            flexShrink: 0,
+          }}
+        >
+          <CheckSquare size={18} color="var(--purple-400)" />
+        </div>
+        <div>
+          <h3 style={{ fontSize: "1rem", fontWeight: 700, marginBottom: 3 }}>
+            Institutional Rules & Optional Attendance
+          </h3>
+          <p style={{ fontSize: "0.8125rem", color: "var(--slate-400)", lineHeight: 1.6 }}>
+            Configure whether attendance is tracked for students. When disabled (default), all attendance checks are bypassed and project idea submissions are completely unblocked.
+          </p>
+        </div>
+      </div>
+
+      <form onSubmit={handleSave}>
+        <div className="form-group mb-4">
+          <label className="flex items-center gap-2" style={{ cursor: "pointer", fontSize: "0.875rem", fontWeight: 600 }}>
+            <input
+              type="checkbox"
+              checked={isAttendanceEnabled}
+              onChange={(e) =>
+                setSettings((s) => ({
+                  ...s,
+                  ATTENDANCE_ENABLED: e.target.checked ? "true" : "false",
+                }))
+              }
+              style={{ width: 16, height: 16, accentColor: "var(--purple-500)" }}
+            />
+            Enable Attendance Tracking Module
+          </label>
+          <p style={{ fontSize: "0.75rem", color: "var(--slate-500)", marginTop: 4, marginLeft: 24 }}>
+            {isAttendanceEnabled
+              ? "Attendance is currently ENABLED. Attendance checks and records will be active."
+              : "Attendance is currently DISABLED. Idea submissions are not blocked by attendance."}
+          </p>
+        </div>
+
+        {isAttendanceEnabled && (
+          <div className="form-group mb-4" style={{ paddingLeft: 24 }}>
+            <label className="form-label" style={{ fontSize: "0.8rem" }}>
+              Minimum Required Attendance for Project Idea Submission (%)
+            </label>
+            <input
+              type="number"
+              className="form-input"
+              min={0}
+              max={100}
+              style={{ width: 140 }}
+              value={settings.MIN_ATTENDANCE_FOR_IDEA || "0"}
+              onChange={(e) =>
+                setSettings((s) => ({
+                  ...s,
+                  MIN_ATTENDANCE_FOR_IDEA: e.target.value,
+                }))
+              }
+            />
+            <p style={{ fontSize: "0.72rem", color: "var(--slate-500)", marginTop: 4 }}>
+              Set to 0 to make attendance recorded without blocking idea submissions.
+            </p>
+          </div>
+        )}
+
+        <button type="submit" className="btn btn-primary" disabled={saving}>
+          {saving ? <Loader2 size={15} className="spin" /> : <Save size={15} />}
+          Save Institutional Rules
+        </button>
+      </form>
     </div>
   );
 }

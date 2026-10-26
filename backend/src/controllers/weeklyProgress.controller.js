@@ -112,12 +112,12 @@ async function reviewProgress(req, res, next) {
       const mentor = await prisma.mentor.findUnique({ where: { userId } });
       if (!mentor) return res.status(403).json({ message: "Mentor profile not found." });
       data.mentorId = mentor.id;
-    } else if (role === "FACULTY") {
+    } else if (role === "FACULTY" || role === "ADMIN") {
       const faculty = await prisma.faculty.findUnique({ where: { userId } });
-      if (!faculty) return res.status(403).json({ message: "Faculty profile not found." });
-      data.facultyId = faculty.id;
+      if (!faculty && role !== "ADMIN") return res.status(403).json({ message: "Faculty profile not found." });
+      data.facultyId = faculty?.id || wp.project.facultyId || null;
     } else {
-      return res.status(403).json({ message: "Only mentors and faculty can review progress." });
+      return res.status(403).json({ message: "Only mentors, faculty, and administrators can review progress." });
     }
 
     await prisma.progressReview.create({ data });

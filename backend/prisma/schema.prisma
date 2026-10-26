@@ -115,6 +115,32 @@ enum NotificationType {
   GENERAL
 }
 
+enum MeetingStatus {
+  SCHEDULED
+  RESCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum CriteriaScope {
+  TEAM
+  INDIVIDUAL
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+  SMS
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED
+}
+
 // ─────────────────────────────────────────────
 // USER (admin / faculty / mentor — not students)
 // ─────────────────────────────────────────────
@@ -222,6 +248,7 @@ model Subject {
   projects           Project[]
   evaluationCriteria EvaluationCriteria[]
   milestoneTemplates MilestoneTemplate[]
+  attendanceRecords  AttendanceRecord[]
 }
 
 model FacultySubject {
@@ -305,13 +332,15 @@ model Student {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
-  projectMembers   ProjectMember[]
-  weeklyProgress   WeeklyProgress[]
-  documents        Document[]
-  conversations    ConversationParticipant[]
-  sentMessages     StudentMessage[]
-  notifications    StudentNotification[]
-  activityLogs     StudentActivityLog[]
+  projectMembers     ProjectMember[]
+  weeklyProgress     WeeklyProgress[]
+  documents          Document[]
+  conversations      ConversationParticipant[]
+  sentMessages       StudentMessage[]
+  notifications      StudentNotification[]
+  activityLogs       StudentActivityLog[]
+  studentEvaluations StudentEvaluation[]
+  attendanceRecords  AttendanceRecord[]
 
   @@index([academicYearId, semesterId])
 }
@@ -441,6 +470,8 @@ model Milestone {
   requiredEvidence String?
   startDate        DateTime?
   endDate          DateTime?
+  timeZone         String       @default("Asia/Kolkata")
+  reminderSentAt   DateTime?
   completedAt      DateTime?
   status           ReviewStatus @default(PENDING)
   isRequired       Boolean      @default(true)
@@ -617,21 +648,29 @@ model StudentMessage {
 // ─────────────────────────────────────────────
 
 model Meeting {
-  id          String      @id @default(uuid())
-  projectId   String
-  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  mentorId    String?
-  mentor      Mentor?     @relation(fields: [mentorId], references: [id])
-  facultyId   String?
-  faculty     Faculty?    @relation("FacultyMeetings", fields: [facultyId], references: [id])
-  title       String
-  scheduledAt DateTime
-  duration    Int?
-  type        MeetingType @default(IN_PERSON)
-  venue       String?
-  meetLink    String?
-  agenda      String?
-  createdAt   DateTime    @default(now())
+  id                String        @id @default(uuid())
+  projectId         String
+  project           Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mentorId          String?
+  mentor            Mentor?       @relation(fields: [mentorId], references: [id])
+  facultyId         String?
+  faculty           Faculty?      @relation("FacultyMeetings", fields: [facultyId], references: [id])
+  conductedById     String?
+  title             String
+  scheduledAt       DateTime
+  timeZone          String        @default("Asia/Kolkata")
+  duration          Int?
+  type              MeetingType   @default(IN_PERSON)
+  status            MeetingStatus @default(SCHEDULED)
+  venue             String?
+  meetLink          String?
+  agenda            String?
+  feedback          String?
+  cancelReason      String?
+  rescheduleReason  String?
+  reminderSentAt    DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime      @default(now())
 }
 
 // ─────────────────────────────────────────────
@@ -658,45 +697,122 @@ model Presentation {
 // ─────────────────────────────────────────────
 
 model EvaluationCriteria {
-  id          String  @id @default(uuid())
+  id          String        @id @default(uuid())
   subjectId   String
-  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  subject     Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
   name        String
   description String?
   maxMarks    Float
-  isActive    Boolean @default(true)
+  scope       CriteriaScope @default(TEAM)
+  isActive    Boolean       @default(true)
 
-  marks EvaluationMark[]
+  marks        EvaluationMark[]
+  studentMarks StudentEvaluationMark[]
 
   @@unique([subjectId, name])
 }
 
 model Evaluation {
-  id             String   @id @default(uuid())
-  projectId      String   @unique
-  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id             String    @id @default(uuid())
+  projectId      String    @unique
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
   facultyId      String?
-  faculty        Faculty? @relation(fields: [facultyId], references: [id])
+  faculty        Faculty?  @relation(fields: [facultyId], references: [id])
   totalMarks     Float?
   grade          String?
   facultyRemarks String?
   mentorRemarks  String?
+  isPublished    Boolean   @default(false)
+  publishedAt    DateTime?
+  publishedById  String?
   completedAt    DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  marks EvaluationMark[]
+  marks              EvaluationMark[]
+  studentEvaluations StudentEvaluation[]
 }
 
 model EvaluationMark {
-  id          String             @id @default(uuid())
+  id           String             @id @default(uuid())
   evaluationId String
-  evaluation  Evaluation         @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
-  criteriaId  String
-  criteria    EvaluationCriteria @relation(fields: [criteriaId], references: [id])
+  evaluation   Evaluation         @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  criteriaId   String
+  criteria     EvaluationCriteria @relation(fields: [criteriaId], references: [id])
   marksAwarded Float
 
   @@unique([evaluationId, criteriaId])
+}
+
+model StudentEvaluation {
+  id                String                  @id @default(uuid())
+  evaluationId      String
+  evaluation        Evaluation              @relation(fields: [evaluationId], references: [id], onDelete: Cascade)
+  studentId         String
+  student           Student                 @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  vivaMarks         Float                   @default(0)
+  contributionMarks Float                   @default(0)
+  totalMarks        Float                   @default(0)
+  percentage        Float                   @default(0)
+  grade             String?
+  feedback          String?
+  isPublished       Boolean                 @default(false)
+  publishedAt       DateTime?
+  marks             StudentEvaluationMark[]
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@unique([evaluationId, studentId])
+}
+
+model StudentEvaluationMark {
+  id                  String             @id @default(uuid())
+  studentEvaluationId String
+  studentEvaluation   StudentEvaluation  @relation(fields: [studentEvaluationId], references: [id], onDelete: Cascade)
+  criteriaId          String
+  criteria            EvaluationCriteria @relation(fields: [criteriaId], references: [id])
+  marksAwarded        Float
+
+  @@unique([studentEvaluationId, criteriaId])
+}
+
+// Central notification delivery & deduplication log
+model NotificationDelivery {
+  id        String              @id @default(uuid())
+  dedupKey  String              @unique
+  channel   NotificationChannel
+  recipient String
+  status    DeliveryStatus      @default(PENDING)
+  title     String?
+  body      String?
+  error     String?
+  metadata  Json?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+}
+
+// Institutional settings & rule configurations
+model SystemSetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+// Attendance tracking
+model AttendanceRecord {
+  id        String   @id @default(uuid())
+  studentId String
+  student   Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  date      DateTime
+  isPresent Boolean  @default(true)
+  remarks   String?
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, subjectId, date])
 }
 
 // ─────────────────────────────────────────────
