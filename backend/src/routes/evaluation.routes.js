@@ -8,16 +8,24 @@ const {
   submitEvaluation,
   getCriteria,
   upsertCriteria,
+  getStudentEvaluationPdf,
+  getProjectEvaluationPdf,
+  shareStudentResult,
 } = require("../controllers/evaluation.controller");
 
 const router = express.Router();
 router.use(authenticate);
 
-// Configurable criteria per subject (spec §50)
+// Configurable criteria per subject
 router.get("/criteria/:subjectId", getCriteria);
-router.put("/criteria/:subjectId", authorize("ADMIN"), validate(schemas.evaluationCriteria), upsertCriteria);
+router.put(
+  "/criteria/:subjectId",
+  authorize("ADMIN"),
+  validate(schemas.evaluationCriteria),
+  upsertCriteria
+);
 
-// Mark sheets
+// Mark sheets & project evaluations
 router.get("/", getEvaluations);
 router.get("/project/:projectId", getProjectEvaluation);
 router.post(
@@ -25,6 +33,17 @@ router.post(
   authorize("ADMIN", "FACULTY"),
   validate(schemas.evaluationMarks),
   submitEvaluation
+);
+
+// Official PDF Reports
+router.get("/project/:projectId/pdf", getProjectEvaluationPdf);
+router.get("/project/:projectId/student/:studentId/pdf", getStudentEvaluationPdf);
+
+// Share result via email / generate WhatsApp link
+router.post(
+  "/project/:projectId/student/:studentId/share",
+  authorize("ADMIN", "FACULTY"),
+  shareStudentResult
 );
 
 module.exports = router;

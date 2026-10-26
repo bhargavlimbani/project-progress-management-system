@@ -29,6 +29,7 @@ const navConfigs = {
 
     { section: "Delivery" },
     { label: "Projects", icon: FolderKanban, to: "/admin/projects" },
+    { label: "Attendance", icon: UserCheck, to: "/admin/attendance" },
     { label: "Presentations", icon: Presentation, to: "/admin/presentations" },
     { label: "Reports", icon: FileText, to: "/admin/reports" },
 
@@ -44,6 +45,7 @@ const navConfigs = {
 
     { section: "Reviews" },
     { label: "Idea Reviews", icon: ClipboardCheck, to: "/faculty/idea-reviews" },
+    { label: "Attendance", icon: UserCheck, to: "/faculty/attendance" },
     { label: "Weekly Verification", icon: TrendingUp, to: "/faculty/weekly-reviews" },
     { label: "Documents", icon: FileText, to: "/faculty/documents" },
     { label: "Evaluations", icon: Trophy, to: "/faculty/evaluations" },
@@ -82,6 +84,7 @@ const navConfigs = {
 
     { section: "My Work" },
     { label: "Weekly Progress", icon: TrendingUp, to: "/student/progress" },
+    { label: "My Attendance", icon: UserCheck, to: "/student/attendance" },
     { label: "Presentations", icon: Presentation, to: "/student/presentations" },
     { label: "Chat", icon: MessageSquare, to: "/student/chat" },
 

@@ -50,6 +50,32 @@ const env = {
     },
   },
 
+  whatsapp: {
+    phoneNumberId: process.env.WHATSAPP_PHONE_NUMBER_ID,
+    accessToken: process.env.WHATSAPP_ACCESS_TOKEN,
+    businessAccountId: process.env.WHATSAPP_BUSINESS_ACCOUNT_ID,
+    get enabled() {
+      return Boolean(
+        process.env.WHATSAPP_PHONE_NUMBER_ID &&
+          process.env.WHATSAPP_ACCESS_TOKEN
+      );
+    },
+  },
+
+  sms: {
+    provider: process.env.SMS_PROVIDER || "twilio",
+    accountSid: process.env.TWILIO_ACCOUNT_SID,
+    authToken: process.env.TWILIO_AUTH_TOKEN,
+    fromNumber: process.env.TWILIO_FROM_NUMBER,
+    get enabled() {
+      return Boolean(
+        process.env.TWILIO_ACCOUNT_SID &&
+          process.env.TWILIO_AUTH_TOKEN &&
+          process.env.TWILIO_FROM_NUMBER
+      );
+    },
+  },
+
   maxFileSizeMb: Number(process.env.MAX_FILE_SIZE_MB || 50),
 
   rateLimit: {

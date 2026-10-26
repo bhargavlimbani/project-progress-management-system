@@ -36,6 +36,8 @@ const messageRoutes = require("./routes/message.routes");
 const reportRoutes = require("./routes/report.routes");
 const searchRoutes = require("./routes/search.routes");
 const activityRoutes = require("./routes/activity.routes");
+const settingRoutes = require("./routes/setting.routes");
+const attendanceRoutes = require("./routes/attendance.routes");
 
 const app = express();
 const server = http.createServer(app);
@@ -101,6 +103,8 @@ app.use("/api/messages", messageRoutes);
 app.use("/api/reports", reportRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/activity", activityRoutes);
+app.use("/api/settings", settingRoutes);
+app.use("/api/attendance", attendanceRoutes);
 
 // ── Errors ─────────────────────────────────────────────────────────────────
 app.use(notFoundHandler);

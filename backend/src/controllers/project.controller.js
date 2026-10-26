@@ -151,6 +151,14 @@ async function createProject(req, res, next) {
       facultyId = faculty.id;
     } else {
       facultyId = subject.faculty[0]?.facultyId;
+      if (!facultyId) {
+        const fallbackFaculty = await prisma.faculty.findFirst();
+        facultyId = fallbackFaculty?.id;
+      }
+    }
+
+    if (!facultyId) {
+      return res.status(400).json({ message: "No faculty found in the system to assign to this project." });
     }
 
     const project = await prisma.$transaction(async (tx) => {
@@ -223,6 +231,29 @@ async function submitProjectIdea(req, res, next) {
       if (!isMember) {
         return res.status(403).json({ message: "You are not a member of this project." });
       }
+
+      // Institutional attendance rule check: only enforced if ATTENDANCE_ENABLED is explicitly enabled
+      const attendanceSetting = await prisma.systemSetting.findUnique({ where: { key: "ATTENDANCE_ENABLED" } });
+      if (attendanceSetting?.value === "true") {
+        const minAttendanceRule = await prisma.systemSetting.findUnique({ where: { key: "MIN_ATTENDANCE_FOR_IDEA" } });
+        const minRequired = Number(minAttendanceRule?.value || 0);
+
+        if (minRequired > 0) {
+          const studentRecords = await prisma.attendanceRecord.findMany({
+            where: { studentId: req.user.id, subjectId: project.subjectId },
+          });
+
+          if (studentRecords.length > 0) {
+            const present = studentRecords.filter((r) => r.isPresent).length;
+            const percentage = (present / studentRecords.length) * 100;
+            if (percentage < minRequired) {
+              return res.status(403).json({
+                message: `Institutional policy requires a minimum of ${minRequired}% attendance to submit project ideas. Your current attendance is ${percentage.toFixed(1)}%.`,
+              });
+            }
+          }
+        }
+      }
     }
 
     const idea = await prisma.projectIdea.upsert({
@@ -233,14 +264,22 @@ async function submitProjectIdea(req, res, next) {
 
     await prisma.project.update({ where: { id: projectId }, data: { status: "IDEA_SUBMITTED", ...(domainId && { domainId }) } });
 
-    // Notify faculty
-    await notifyUser({
-      userId: project.faculty ? (await prisma.faculty.findUnique({ where: { id: project.facultyId }, include: { user: true } }))?.userId : null,
-      type: "GENERAL",
-      title: "New Project Idea Submitted",
-      body: `A new project idea "${title}" has been submitted for your review.`,
-      link: `/faculty/projects/${projectId}/idea`,
-    });
+    // Notify faculty if assigned
+    if (project.facultyId) {
+      const faculty = await prisma.faculty.findUnique({
+        where: { id: project.facultyId },
+        include: { user: true },
+      });
+      if (faculty?.user?.id) {
+        await notifyUser({
+          userId: faculty.user.id,
+          type: "GENERAL",
+          title: "New Project Idea Submitted",
+          body: `A new project idea "${title}" has been submitted for your review.`,
+          link: `/faculty/projects/${projectId}/idea`,
+        });
+      }
+    }
 
     res.status(201).json(idea);
   } catch (err) { next(err); }
@@ -250,18 +289,29 @@ async function submitProjectIdea(req, res, next) {
 async function reviewProjectIdea(req, res, next) {
   try {
     const { projectId } = req.params;
-    const { status, comments } = req.body; // APPROVED | REJECTED | CHANGES_REQUIRED
-    const { id: userId } = req.user;
+    const { status, comments } = req.body;
+    const { id: userId, role } = req.user;
 
-    const faculty = await prisma.faculty.findUnique({ where: { userId } });
-    if (!faculty) return res.status(403).json({ message: "Faculty profile not found." });
+    if (!status || !["APPROVED", "REJECTED", "CHANGES_REQUIRED"].includes(status)) {
+      return res.status(400).json({ message: "Valid status (APPROVED, REJECTED, CHANGES_REQUIRED) is required." });
+    }
 
     const project = await prisma.project.findUnique({ where: { id: projectId }, include: { idea: true, members: true } });
     if (!project?.idea) return res.status(404).json({ message: "Project idea not found." });
 
+    const faculty = await prisma.faculty.findUnique({ where: { userId } });
+    let reviewerId = faculty?.id;
+    if (!reviewerId && role === "ADMIN") {
+      reviewerId = project.facultyId || null;
+    }
+
+    if (!reviewerId && role !== "ADMIN") {
+      return res.status(403).json({ message: "Faculty profile not found." });
+    }
+
     await prisma.$transaction(async (tx) => {
       await tx.ideaReview.create({
-        data: { ideaId: project.idea.id, reviewerId: faculty.id, status, comments },
+        data: { ideaId: project.idea.id, reviewerId: reviewerId || null, status, comments: comments || null },
       });
       await tx.projectIdea.update({ where: { projectId }, data: { status } });
 

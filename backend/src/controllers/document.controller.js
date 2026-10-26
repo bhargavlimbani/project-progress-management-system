@@ -109,9 +109,9 @@ async function reviewDocumentVersion(req, res, next) {
     if (!version) return res.status(404).json({ message: "Document version not found." });
 
     let data = { status, comments, reviewedAt: new Date() };
-    if (role === "FACULTY") {
+    if (role === "FACULTY" || role === "ADMIN") {
       const faculty = await prisma.faculty.findUnique({ where: { userId } });
-      data.facultyId = faculty?.id;
+      data.facultyId = faculty?.id || version.document.project.facultyId || null;
     } else if (role === "MENTOR") {
       const mentor = await prisma.mentor.findUnique({ where: { userId } });
       data.mentorId = mentor?.id;

@@ -140,20 +140,36 @@ export default function Evaluations() {
       key: "actions",
       label: "Action",
       align: "right",
-      width: 110,
+      width: 140,
       sortable: false,
       render: (p) => (
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            navigate(`${basePath}/${p.id}`);
-          }}
-        >
-          {p.isPublished ? <Eye size={13} /> : <Award size={13} />}
-          {p.isPublished ? "View" : "Evaluate"}
-        </button>
+        <div className="flex gap-1 justify-end">
+          {p.isPublished && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                evaluationApi.downloadProjectPdf(p.id);
+              }}
+              title="Download Team Evaluation PDF"
+            >
+              <Eye size={13} />
+              PDF
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              navigate(`${basePath}/${p.id}`);
+            }}
+          >
+            {p.isPublished ? <Eye size={13} /> : <Award size={13} />}
+            {p.isPublished ? "View" : "Evaluate"}
+          </button>
+        </div>
       ),
     },
   ];
