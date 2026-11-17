@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import toast from "react-hot-toast";
 import {
   Lightbulb, CheckCircle2, XCircle, MessageSquareWarning, Sparkles, UserCheck,
-  Loader2, Target, Compass, Cpu, Trophy, Users,
+  Loader2, Target, Compass, Cpu, Trophy, Users, Search, Check, Briefcase, Info,
 } from "lucide-react";
 import { projectApi } from "../../services/index.js";
 import { apiErrorMessage, formatDateTime } from "../../utils/format.js";
@@ -363,6 +363,8 @@ function MentorAssignModal({ project, onClose, onDone }) {
   const [candidates, setCandidates] = useState([]);
   const [selected, setSelected] = useState("");
   const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("all"); // "all" | "domain"
 
   useEffect(() => {
     let active = true;
@@ -371,9 +373,10 @@ function MentorAssignModal({ project, onClose, onDone }) {
       .then(({ data }) => {
         if (!active) return;
         const recommended = data.recommended || data.recommendation || null;
+        const all = data.candidates || data.mentors || data.allMentors || [];
         setRecommendation(recommended);
-        setCandidates(data.mentors || data.candidates || []);
-        setSelected(recommended?.id || "");
+        setCandidates(all);
+        setSelected(recommended?.id || all[0]?.id || "");
       })
       .catch((err) => active && toast.error(apiErrorMessage(err)))
       .finally(() => active && setLoading(false));
@@ -381,6 +384,29 @@ function MentorAssignModal({ project, onClose, onDone }) {
       active = false;
     };
   }, [project.id]);
+
+  const domainMatchesCount = useMemo(() => {
+    return candidates.filter((c) => c.matchesDomain).length;
+  }, [candidates]);
+
+  const filteredCandidates = useMemo(() => {
+    let list = candidates;
+    if (activeTab === "domain") {
+      list = list.filter((c) => c.matchesDomain);
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      list = list.filter((c) => {
+        const name = (c.user?.name || "").toLowerCase();
+        const email = (c.user?.email || "").toLowerCase();
+        const expertise = (c.expertise || "").toLowerCase();
+        const id = (c.mentorId || "").toLowerCase();
+        const domains = (c.domains || []).map((d) => (d?.name || "").toLowerCase()).join(" ");
+        return name.includes(q) || email.includes(q) || expertise.includes(q) || id.includes(q) || domains.includes(q);
+      });
+    }
+    return list;
+  }, [candidates, activeTab, searchQuery]);
 
   const assign = async () => {
     if (!selected) {
@@ -406,8 +432,8 @@ function MentorAssignModal({ project, onClose, onDone }) {
       open
       onClose={onClose}
       title="Assign Mentor"
-      subtitle={`Domain: ${project.domain?.name || "not set"}`}
-      width={560}
+      subtitle={`Project Domain: ${project.domain?.name || "General / Unassigned"}`}
+      width={640}
       footer={
         <>
           <button type="button" className="btn btn-secondary" onClick={onClose}>
@@ -428,47 +454,189 @@ function MentorAssignModal({ project, onClose, onDone }) {
       {loading ? (
         <div style={{ padding: 40, textAlign: "center" }}>
           <div className="spinner" style={{ margin: "0 auto" }} />
+          <p style={{ marginTop: 12, color: "var(--slate-400)", fontSize: "0.85rem" }}>
+            Loading all available mentors…
+          </p>
         </div>
       ) : !candidates.length ? (
         <EmptyState
           compact
           icon={UserCheck}
-          title="No mentors cover this domain"
-          message="Add a mentor to this domain under Admin → Mentors, then come back."
+          title="No mentors registered yet"
+          message="Add mentors under Admin → Mentors, then you can assign them to projects."
         />
       ) : (
-        <>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Recommendation Banner */}
           {recommendation && (
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                gap: 10,
-                padding: "11px 14px",
-                borderRadius: 11,
-                background: "rgba(124,58,237,0.1)",
-                border: "1px solid rgba(124,58,237,0.25)",
-                marginBottom: 16,
-                fontSize: "0.8125rem",
+                gap: 11,
+                padding: "12px 14px",
+                borderRadius: 12,
+                background: "linear-gradient(135deg, rgba(124,58,237,0.15) 0%, rgba(99,102,241,0.08) 100%)",
+                border: "1px solid rgba(124,58,237,0.3)",
+                fontSize: "0.825rem",
               }}
             >
-              <Sparkles size={15} color="var(--purple-400)" style={{ flexShrink: 0 }} />
-              <span style={{ color: "var(--slate-300)" }}>
-                Recommended:{" "}
-                <strong style={{ color: "var(--white)" }}>{recommendation.user?.name}</strong> —
-                lightest workload in this domain.
+              <Sparkles size={16} color="var(--purple-400)" style={{ flexShrink: 0 }} />
+              <div style={{ color: "var(--slate-300)", lineHeight: 1.4 }}>
+                <span style={{ color: "var(--purple-300)", fontWeight: 700 }}>AI Recommendation: </span>
+                <strong style={{ color: "var(--white)" }}>{recommendation.user?.name}</strong>
+                {recommendation.matchesDomain ? (
+                  <span> — specialized in {project.domain?.name} with lightest current workload.</span>
+                ) : (
+                  <span> — available mentor with lightest current workload.</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Domain Notice Banner if no direct domain matches */}
+          {project.domain?.name && domainMatchesCount === 0 && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 9,
+                padding: "10px 13px",
+                borderRadius: 10,
+                background: "rgba(59,130,246,0.08)",
+                border: "1px solid rgba(59,130,246,0.22)",
+                fontSize: "0.785rem",
+                color: "var(--slate-300)",
+              }}
+            >
+              <Info size={15} color="var(--blue-400)" style={{ flexShrink: 0 }} />
+              <span>
+                No mentor is specifically tagged with &quot;{project.domain.name}&quot;. Showing all active mentors so faculty can assign an advisor.
               </span>
             </div>
           )}
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-            {candidates
-              .slice()
-              .sort((a, b) => (a.activeProjects ?? 0) - (b.activeProjects ?? 0))
-              .map((mentor) => {
+          {/* Search & Filter Bar */}
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+            <div style={{ position: "relative", flex: 1, minWidth: 200 }}>
+              <Search
+                size={14}
+                style={{
+                  position: "absolute",
+                  left: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  color: "var(--slate-500)",
+                }}
+              />
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Search mentor by name, email, domain, expertise…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{ paddingLeft: 34, height: 36, fontSize: "0.825rem" }}
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  style={{
+                    position: "absolute",
+                    right: 10,
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "none",
+                    border: "none",
+                    color: "var(--slate-400)",
+                    cursor: "pointer",
+                    fontSize: "0.75rem",
+                  }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            {domainMatchesCount > 0 && (
+              <div style={{ display: "flex", gap: 5 }}>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("all")}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    border: activeTab === "all" ? "1px solid rgba(124,58,237,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                    background: activeTab === "all" ? "rgba(124,58,237,0.2)" : "rgba(255,255,255,0.03)",
+                    color: activeTab === "all" ? "var(--purple-300)" : "var(--slate-400)",
+                  }}
+                >
+                  All Mentors ({candidates.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("domain")}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    fontSize: "0.75rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    border: activeTab === "domain" ? "1px solid rgba(16,185,129,0.5)" : "1px solid rgba(255,255,255,0.08)",
+                    background: activeTab === "domain" ? "rgba(16,185,129,0.18)" : "rgba(255,255,255,0.03)",
+                    color: activeTab === "domain" ? "var(--emerald-300)" : "var(--slate-400)",
+                  }}
+                >
+                  Domain Specialists ({domainMatchesCount})
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Mentor List */}
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 9,
+              maxHeight: 380,
+              overflowY: "auto",
+              paddingRight: 4,
+            }}
+          >
+            {filteredCandidates.length === 0 ? (
+              <div style={{ padding: "30px 15px", textAlign: "center", color: "var(--slate-400)" }}>
+                <p style={{ fontSize: "0.85rem", marginBottom: 8 }}>
+                  No mentors match your search {searchQuery ? `"${searchQuery}"` : ""}.
+                </p>
+                {searchQuery && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => {
+                      setSearchQuery("");
+                      setActiveTab("all");
+                    }}
+                  >
+                    Clear Filter
+                  </button>
+                )}
+              </div>
+            ) : (
+              filteredCandidates.map((mentor) => {
                 const isSelected = selected === mentor.id;
                 const isRecommended = recommendation?.id === mentor.id;
                 const load = mentor.activeProjects ?? 0;
+                const initials = (mentor.user?.name || "M")
+                  .split(" ")
+                  .map((w) => w[0])
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .join("")
+                  .toUpperCase();
 
                 return (
                   <button
@@ -479,48 +647,150 @@ function MentorAssignModal({ project, onClose, onDone }) {
                       textAlign: "left",
                       padding: "13px 15px",
                       borderRadius: 12,
-                      border: `1px solid ${isSelected ? "rgba(124,58,237,0.5)" : "rgba(255,255,255,0.08)"}`,
-                      background: isSelected ? "rgba(124,58,237,0.1)" : "rgba(255,255,255,0.02)",
-                      transition: "all 150ms",
+                      border: `1.5px solid ${isSelected ? "var(--purple-500)" : "rgba(255,255,255,0.08)"}`,
+                      background: isSelected
+                        ? "linear-gradient(135deg, rgba(124,58,237,0.16) 0%, rgba(99,102,241,0.08) 100%)"
+                        : "rgba(255,255,255,0.02)",
+                      boxShadow: isSelected ? "0 0 14px rgba(124,58,237,0.22)" : "none",
+                      transition: "all 150ms ease",
+                      cursor: "pointer",
+                      width: "100%",
                     }}
                   >
-                    <div className="flex items-center justify-between gap-3 mb-2">
-                      <span
-                        style={{ fontSize: "0.875rem", fontWeight: 700, color: "var(--white)" }}
-                      >
-                        {mentor.user?.name}
-                        {isRecommended && (
-                          <span
-                            className="badge badge-purple"
-                            style={{ marginLeft: 8, fontSize: "0.58rem", padding: "2px 7px" }}
-                          >
-                            Recommended
-                          </span>
-                        )}
-                      </span>
-                      <span style={{ fontSize: "0.75rem", color: "var(--slate-400)" }}>
-                        {load} active
-                      </span>
-                    </div>
-
-                    {mentor.expertise && (
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                      {/* Selection Radio Circle */}
                       <div
-                        style={{ fontSize: "0.75rem", color: "var(--slate-500)", marginBottom: 7 }}
+                        style={{
+                          width: 20,
+                          height: 20,
+                          borderRadius: "50%",
+                          border: `2px solid ${isSelected ? "var(--purple-400)" : "rgba(255,255,255,0.2)"}`,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          marginTop: 3,
+                          flexShrink: 0,
+                          background: isSelected ? "var(--purple-600)" : "transparent",
+                          transition: "all 120ms ease",
+                        }}
                       >
-                        {mentor.expertise}
+                        {isSelected && <Check size={12} color="#ffffff" strokeWidth={3} />}
                       </div>
-                    )}
 
-                    <ProgressBar
-                      value={(load / maxLoad) * 100}
-                      height={4}
-                      variant={load >= maxLoad && maxLoad > 3 ? "at-risk" : undefined}
-                    />
+                      {/* Mentor Avatar */}
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: "50%",
+                          background: isSelected
+                            ? "linear-gradient(135deg, #7c3aed, #4f46e5)"
+                            : "rgba(255,255,255,0.06)",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          color: "var(--white)",
+                          fontWeight: 700,
+                          fontSize: "0.8rem",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {initials}
+                      </div>
+
+                      {/* Info Body */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap" }}>
+                            <span style={{ fontSize: "0.9rem", fontWeight: 700, color: "var(--white)" }}>
+                              {mentor.user?.name}
+                            </span>
+                            {mentor.mentorId && (
+                              <span style={{ fontSize: "0.7rem", color: "var(--slate-400)", background: "rgba(255,255,255,0.06)", padding: "1px 6px", borderRadius: 4 }}>
+                                {mentor.mentorId}
+                              </span>
+                            )}
+                            {isRecommended && (
+                              <span
+                                className="badge badge-purple"
+                                style={{ fontSize: "0.62rem", padding: "2px 7px", fontWeight: 600 }}
+                              >
+                                ⭐ Recommended
+                              </span>
+                            )}
+                            {mentor.matchesDomain && (
+                              <span
+                                style={{
+                                  fontSize: "0.62rem",
+                                  padding: "2px 7px",
+                                  borderRadius: 6,
+                                  background: "rgba(16,185,129,0.15)",
+                                  color: "var(--emerald-300)",
+                                  border: "1px solid rgba(16,185,129,0.3)",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                ✓ Domain Specialist
+                              </span>
+                            )}
+                          </div>
+
+                          <span style={{ fontSize: "0.75rem", color: "var(--slate-400)", fontWeight: 500 }}>
+                            <strong style={{ color: load === 0 ? "var(--emerald-400)" : "var(--slate-200)" }}>{load}</strong> active project{load === 1 ? "" : "s"}
+                          </span>
+                        </div>
+
+                        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 3, fontSize: "0.75rem", color: "var(--slate-400)", flexWrap: "wrap" }}>
+                          <span>{mentor.user?.email}</span>
+                          {mentor.mobile && <span>• {mentor.mobile}</span>}
+                          {mentor.expertise && (
+                            <span style={{ color: "var(--slate-300)" }}>
+                              • Expertise: {mentor.expertise}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Domain Tags */}
+                        {mentor.domains?.length > 0 && (
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap", marginTop: 7 }}>
+                            {mentor.domains.map((dom) => {
+                              const isTargetDomain = project.domain?.id === dom.id || project.domain?.name === dom.name;
+                              return (
+                                <span
+                                  key={dom.id || dom.name}
+                                  style={{
+                                    fontSize: "0.68rem",
+                                    padding: "2px 7px",
+                                    borderRadius: 5,
+                                    background: isTargetDomain ? "rgba(124,58,237,0.2)" : "rgba(255,255,255,0.04)",
+                                    border: isTargetDomain ? "1px solid rgba(124,58,237,0.4)" : "1px solid rgba(255,255,255,0.06)",
+                                    color: isTargetDomain ? "var(--purple-300)" : "var(--slate-400)",
+                                    fontWeight: isTargetDomain ? 600 : 400,
+                                  }}
+                                >
+                                  {dom.name}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <div style={{ marginTop: 8 }}>
+                          <ProgressBar
+                            value={(load / maxLoad) * 100}
+                            height={3}
+                            variant={load >= maxLoad && maxLoad > 3 ? "at-risk" : undefined}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </button>
                 );
-              })}
+              })
+            )}
           </div>
-        </>
+        </div>
       )}
     </Modal>
   );

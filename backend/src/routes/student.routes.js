@@ -4,7 +4,7 @@ const { validate } = require("../middleware/validate.middleware");
 const schemas = require("../validators");
 const {
   getStudents, getStudentById, createStudent, updateStudent, deleteStudent,
-  resetStudentPassword, activateStudentAccount, exportStudents,
+  resetStudentPassword, activateStudentAccount, exportStudents, searchPeers,
 } = require("../controllers/student.controller");
 
 const router = express.Router();
@@ -13,6 +13,9 @@ const router = express.Router();
 router.post("/activate/:token", activateStudentAccount);
 
 router.use(authenticate);
+
+// Peer lookup for teammates (accessible to students and staff)
+router.get("/peers", searchPeers);
 
 // The roster carries every student's email and mobile — staff only.
 router.get("/", authorize("ADMIN", "FACULTY", "MENTOR"), getStudents);

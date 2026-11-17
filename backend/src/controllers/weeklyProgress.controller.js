@@ -85,7 +85,7 @@ async function submitWeeklyProgress(req, res, next) {
         type: "GENERAL",
         title: "Weekly Progress Submitted",
         body: `Week ${weekNumber} progress for "${project.title}" requires your review.`,
-        link: `/mentor/reviews/${progress.id}`,
+        link: "/mentor/weekly-reviews",
       });
     }
 
@@ -196,4 +196,36 @@ async function getPendingReviews(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { getWeeklyProgress, submitWeeklyProgress, reviewProgress, getPendingReviews };
+const { fetchGitHubStats } = require("../services/github.service");
+
+async function getProjectGitHubStats(req, res, next) {
+  try {
+    const { projectId } = req.params;
+    const requestedUrl = req.query.url;
+
+    let repoUrl = requestedUrl;
+    if (!repoUrl) {
+      const latestWp = await prisma.weeklyProgress.findFirst({
+        where: { projectId, githubUrl: { not: null } },
+        orderBy: { weekNumber: "desc" },
+        select: { githubUrl: true },
+      });
+      repoUrl = latestWp?.githubUrl;
+    }
+
+    if (!repoUrl) {
+      return res.json({ hasRepo: false, message: "No GitHub repository linked to this project yet." });
+    }
+
+    const stats = await fetchGitHubStats(repoUrl);
+    res.json({ hasRepo: true, repoUrl, stats });
+  } catch (err) { next(err); }
+}
+
+module.exports = {
+  getWeeklyProgress,
+  submitWeeklyProgress,
+  reviewProgress,
+  getPendingReviews,
+  getProjectGitHubStats,
+};

@@ -5,6 +5,9 @@ const {
   submitProjectIdea, reviewProjectIdea,
   getMentorRecommendation, assignMentor,
   getStudentProjects,
+  downloadProjectReportPdf,
+  addProjectMember,
+  removeProjectMember,
 } = require("../controllers/project.controller");
 
 const router = express.Router();
@@ -17,6 +20,13 @@ router.get("/:id", getProjectById);
 router.post("/", createProject);
 router.put("/:id", authorize("ADMIN", "FACULTY", "MENTOR"), updateProject);
 router.delete("/:id", authorize("ADMIN"), deleteProject);
+
+// Academic Completion Report PDF download
+router.get("/:id/report/pdf", downloadProjectReportPdf);
+
+// Team Member Management
+router.post("/:id/members", addProjectMember);
+router.delete("/:id/members/:memberId", removeProjectMember);
 
 // Project idea workflow
 router.post("/:projectId/idea", authorize("STUDENT"), submitProjectIdea);

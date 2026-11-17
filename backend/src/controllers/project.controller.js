@@ -1,7 +1,7 @@
 const prisma = require("../config/prisma");
 const { logActivity } = require("../services/activityLog.service");
 const { notifyUser, notifyStudent, notifyProjectTeam } = require("../services/notification.service");
-const { recommendMentor, getMentorsForDomain } = require("../services/mentorRecommendation.service");
+const { recommendMentor, getMentorsForDomain, getAllMentorsWithWorkload } = require("../services/mentorRecommendation.service");
 const { calculateProgress } = require("../services/progress.service");
 const { scopeProjectWhere, getAccessibleProject } = require("../services/access.service");
 const { SAFE_USER_SELECT, STUDENT_SUMMARY_SELECT } = require("../utils/safeFields");
@@ -45,11 +45,13 @@ async function getProjects(req, res, next) {
     if (status) where.status = status;
     if (academicYearId) where.academicYearId = academicYearId;
 
-    // Role-based filtering
+    // Role-based filtering: Admin sees all, faculty strictly sees assigned projects
     if (role === "FACULTY") {
       const faculty = await prisma.faculty.findUnique({ where: { userId } });
       if (!faculty) return res.status(403).json({ message: "Faculty profile not found." });
-      where.facultyId = facultyId || faculty.id;
+
+      // Strictly assigned faculty only
+      where.facultyId = faculty.id;
     } else if (role === "MENTOR") {
       const mentor = await prisma.mentor.findUnique({ where: { userId } });
       if (!mentor) return res.status(403).json({ message: "Mentor profile not found." });
@@ -66,11 +68,15 @@ async function getProjects(req, res, next) {
     }
 
     if (search) {
-      where.OR = [
-        { title: { contains: search, mode: "insensitive" } },
-        { members: { some: { student: { name: { contains: search, mode: "insensitive" } } } } },
-        { members: { some: { student: { enrollmentNumber: { contains: search, mode: "insensitive" } } } } },
-      ];
+      const searchCondition = {
+        OR: [
+          { title: { contains: search, mode: "insensitive" } },
+          { members: { some: { student: { name: { contains: search, mode: "insensitive" } } } } },
+          { members: { some: { student: { enrollmentNumber: { contains: search, mode: "insensitive" } } } } },
+        ],
+      };
+      if (!where.AND) where.AND = [];
+      where.AND.push(searchCondition);
     }
 
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -262,6 +268,40 @@ async function submitProjectIdea(req, res, next) {
       update: { title, abstract, problemStatement, objectives, scope, technologies, expectedOutcome, teamMembers, domainId, status: "PENDING" },
     });
 
+    // Auto-link teammates to ProjectMember if enrollment numbers or emails were entered
+    if (teamMembers && typeof teamMembers === "string") {
+      const tokens = teamMembers
+        .split(/[,;\n]+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      if (tokens.length > 0) {
+        const foundStudents = await prisma.student.findMany({
+          where: {
+            OR: [
+              { enrollmentNumber: { in: tokens, mode: "insensitive" } },
+              { email: { in: tokens, mode: "insensitive" } },
+            ],
+          },
+          select: { id: true },
+        });
+
+        for (const s of foundStudents) {
+          await prisma.projectMember.upsert({
+            where: {
+              projectId_studentId: { projectId, studentId: s.id },
+            },
+            create: {
+              projectId,
+              studentId: s.id,
+              isLead: false,
+            },
+            update: {},
+          });
+        }
+      }
+    }
+
     await prisma.project.update({ where: { id: projectId }, data: { status: "IDEA_SUBMITTED", ...(domainId && { domainId }) } });
 
     // Notify faculty if assigned
@@ -341,13 +381,23 @@ async function reviewProjectIdea(req, res, next) {
 async function getMentorRecommendation(req, res, next) {
   try {
     const { projectId } = req.params;
-    const project = await prisma.project.findUnique({ where: { id: projectId } });
-    if (!project?.domainId) return res.status(400).json({ message: "Project has no domain assigned." });
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: { domain: true },
+    });
+    if (!project) return res.status(404).json({ message: "Project not found." });
 
-    const recommended = await recommendMentor(project.domainId);
-    const allMentors = await getMentorsForDomain(project.domainId);
+    const { recommended, allMentors, domainMatchesCount } = await getAllMentorsWithWorkload(project.domainId);
 
-    res.json({ recommended, allMentors });
+    res.json({
+      recommended,
+      recommendation: recommended,
+      candidates: allMentors,
+      mentors: allMentors,
+      allMentors,
+      domainMatchesCount,
+      projectDomain: project.domain,
+    });
   } catch (err) { next(err); }
 }
 
@@ -416,9 +466,132 @@ async function getStudentProjects(req, res, next) {
   } catch (err) { next(err); }
 }
 
+const { generateProjectReportPdf } = require("../services/projectReportPdf.service");
+
+async function downloadProjectReportPdf(req, res, next) {
+  try {
+    const { id: projectId } = req.params;
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        subject: true,
+        academicYear: true,
+        domain: true,
+        faculty: { include: { user: true } },
+        mentor: { include: { user: true } },
+        members: { include: { student: true } },
+        milestones: true,
+        weeklyProgress: true,
+        documents: true,
+      },
+    });
+
+    if (!project) return res.status(404).json({ message: "Project not found." });
+
+    const evaluation = await prisma.evaluation.findUnique({
+      where: { projectId },
+      include: {
+        marks: { include: { criteria: true } },
+        studentEvaluations: { include: { student: true } },
+      },
+    });
+
+    const pdfBuffer = await generateProjectReportPdf(project, evaluation);
+
+    const safeTitle = (project.title || "project")
+      .replace(/[^a-zA-Z0-9-_]/g, "_")
+      .slice(0, 30);
+    const filename = `SAPMS-Report-${safeTitle}.pdf`;
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+  } catch (err) { next(err); }
+}
+
+async function addProjectMember(req, res, next) {
+  try {
+    const { id: projectId } = req.params;
+    const { studentId, enrollmentNumber } = req.body;
+
+    let targetStudent = null;
+    if (studentId) {
+      targetStudent = await prisma.student.findUnique({ where: { id: studentId } });
+    } else if (enrollmentNumber) {
+      const term = String(enrollmentNumber).trim();
+      targetStudent = await prisma.student.findFirst({
+        where: {
+          OR: [
+            { enrollmentNumber: { equals: term, mode: "insensitive" } },
+            { email: { equals: term, mode: "insensitive" } },
+          ],
+        },
+      });
+    }
+
+    if (!targetStudent) {
+      return res.status(404).json({ message: "Student not found with that enrollment number or email." });
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: { members: { include: { student: true } } },
+    });
+    if (!project) return res.status(404).json({ message: "Project not found." });
+
+    const member = await prisma.projectMember.upsert({
+      where: {
+        projectId_studentId: { projectId, studentId: targetStudent.id },
+      },
+      create: {
+        projectId,
+        studentId: targetStudent.id,
+        isLead: false,
+      },
+      update: {},
+      include: { student: true },
+    });
+
+    // Notify the invited student
+    await notifyStudent({
+      studentId: targetStudent.id,
+      type: "GENERAL",
+      title: "Team Project Invitation",
+      body: `You have been added to the team for project "${project.title}".`,
+      link: `/student/projects/${projectId}`,
+    });
+
+    res.status(201).json({ message: "Teammate added successfully.", member });
+  } catch (err) { next(err); }
+}
+
+async function removeProjectMember(req, res, next) {
+  try {
+    const { id: projectId, memberId } = req.params;
+
+    const member = await prisma.projectMember.findFirst({
+      where: {
+        projectId,
+        OR: [{ id: memberId }, { studentId: memberId }],
+      },
+    });
+
+    if (!member) return res.status(404).json({ message: "Member not found in this project." });
+    if (member.isLead) {
+      return res.status(400).json({ message: "Cannot remove the team lead. Reassign lead first." });
+    }
+
+    await prisma.projectMember.delete({ where: { id: member.id } });
+    res.json({ message: "Member removed from project team." });
+  } catch (err) { next(err); }
+}
+
 module.exports = {
   getProjects, getProjectById, createProject, updateProject, deleteProject,
   submitProjectIdea, reviewProjectIdea,
   getMentorRecommendation, assignMentor,
   getStudentProjects,
+  downloadProjectReportPdf,
+  addProjectMember,
+  removeProjectMember,
 };

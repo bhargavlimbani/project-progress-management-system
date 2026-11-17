@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import toast from "react-hot-toast";
-import { FolderKanban, Plus, Lightbulb, Loader2, BookOpen } from "lucide-react";
-import { projectApi, subjectApi, domainApi, academicApi } from "../../services/index.js";
+import { FolderKanban, Plus, Lightbulb, Loader2, BookOpen, Users, CheckCircle2 } from "lucide-react";
+import { projectApi, subjectApi, domainApi, academicApi, studentApi } from "../../services/index.js";
 import { useApi, useApiAll } from "../../hooks/useApi.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import { apiErrorMessage } from "../../utils/format.js";
@@ -158,6 +158,35 @@ export default function MyProjects() {
 function NewProjectModal({ subjects, domains, years, onClose, onDone }) {
   const [form, setForm] = useState(emptyIdea);
   const [saving, setSaving] = useState(false);
+  const [matchedPeers, setMatchedPeers] = useState([]);
+
+  useEffect(() => {
+    if (!form.teamMembers || form.teamMembers.trim().length < 3) {
+      setMatchedPeers([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      const tokens = form.teamMembers
+        .split(/[,;\s]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 3);
+      if (!tokens.length) return;
+      try {
+        const found = [];
+        for (const token of tokens) {
+          const res = await studentApi.searchPeers(token);
+          const list = res?.data?.students || [];
+          for (const s of list) {
+            if (!found.some((x) => x.id === s.id)) found.push(s);
+          }
+        }
+        setMatchedPeers(found);
+      } catch {
+        /* silent */
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [form.teamMembers]);
 
   const activeYear = years.find((y) => y.isActive) || years[0];
   const selectedSubject = subjects.find((s) => s.id === form.subjectId);
@@ -358,13 +387,47 @@ function NewProjectModal({ subjects, domains, years, onClose, onDone }) {
           </div>
 
           <div className="form-group form-grid-full">
-            <label className="form-label">Team Members (optional)</label>
+            <label className="form-label flex items-center justify-between">
+              <span>Team Members (optional)</span>
+              {matchedPeers.length > 0 && (
+                <span style={{ fontSize: "0.72rem", color: "var(--green-400)", fontWeight: 600 }}>
+                  {matchedPeers.length} teammate(s) found
+                </span>
+              )}
+            </label>
             <input
               className="form-input"
-              placeholder="Enrollment numbers of teammates, comma-separated"
+              placeholder="Enrollment numbers of teammates, comma-separated (e.g. 92301733021)"
               value={form.teamMembers}
               onChange={(e) => setForm((f) => ({ ...f, teamMembers: e.target.value }))}
             />
+            {matchedPeers.length > 0 && (
+              <div className="flex gap-2 mt-2" style={{ flexWrap: "wrap" }}>
+                {matchedPeers.map((p) => (
+                  <span
+                    key={p.id}
+                    style={{
+                      fontSize: "0.72rem",
+                      background: "rgba(16, 185, 129, 0.12)",
+                      border: "1px solid rgba(16, 185, 129, 0.25)",
+                      color: "var(--green-400)",
+                      padding: "4px 10px",
+                      borderRadius: 99,
+                      fontWeight: 600,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 5,
+                    }}
+                  >
+                    <CheckCircle2 size={12} />
+                    {p.name} ({p.enrollmentNumber})
+                  </span>
+                ))}
+              </div>
+            )}
+            <span style={{ fontSize: "0.7rem", color: "var(--slate-500)", marginTop: 4, display: "block" }}>
+              Enter full enrollment numbers of your teammates. They will automatically be granted access to this project.
+            </span>
           </div>
         </div>
       </form>

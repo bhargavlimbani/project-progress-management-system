@@ -533,7 +533,7 @@ export default function Faculty() {
         title={`Delete ${deleting?.user?.name}?`}
         message={
           deleting?._count?.projects > 0
-            ? `This faculty member supervises ${deleting._count.projects} project(s). Deleting will fail while those projects exist — deactivate the account instead.`
+            ? `This faculty member supervises ${deleting._count.projects} project(s). Supervised projects will be automatically reassigned to another active faculty member in the department.`
             : "This permanently removes the faculty account and its subject assignments."
         }
         confirmLabel="Delete Faculty"
