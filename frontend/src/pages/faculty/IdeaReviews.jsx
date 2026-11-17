@@ -22,11 +22,22 @@ export default function IdeaReviews() {
   const navigate = useNavigate();
   const [tab, setTab] = useState("pending");
   const [search, setSearch] = useState("");
+  const [selectedSubjectId, setSelectedSubjectId] = useState("");
   const [reviewing, setReviewing] = useState(null);
 
   const { data, loading, refetch } = useApi(() => projectApi.list({ limit: 100 }), [], {
     initialData: { projects: [] },
   });
+
+  const subjects = useMemo(() => {
+    const map = new Map();
+    for (const p of data?.projects || []) {
+      if (p.subject && !map.has(p.subject.id)) {
+        map.set(p.subject.id, p.subject);
+      }
+    }
+    return Array.from(map.values());
+  }, [data?.projects]);
 
   const projects = useMemo(() => {
     const rows = data?.projects || [];
@@ -39,12 +50,14 @@ export default function IdeaReviews() {
       if (tab === "pending" && !isPending) return false;
       if (tab === "reviewed" && isPending) return false;
 
+      if (selectedSubjectId && p.subjectId !== selectedSubjectId) return false;
+
       if (!term) return true;
       return [p.title, p.idea.title, p.subject?.name, p.domain?.name]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(term));
     });
-  }, [data, tab, search]);
+  }, [data, tab, search, selectedSubjectId]);
 
   const pendingCount = (data?.projects || []).filter(
     (p) => p.idea && AWAITING.includes(p.status) && p.idea.status === "PENDING"
@@ -67,6 +80,53 @@ export default function IdeaReviews() {
           { key: "reviewed", label: "Reviewed", icon: CheckCircle2 },
         ]}
       />
+
+      {subjects.length > 1 && (
+        <div style={{ display: "flex", gap: 8, overflowX: "auto", margin: "16px 0", paddingBottom: 4 }}>
+          <button
+            type="button"
+            onClick={() => setSelectedSubjectId("")}
+            className={`btn btn-sm ${!selectedSubjectId ? "btn-primary" : "btn-secondary"}`}
+            style={{ borderRadius: 20, padding: "5px 14px", fontSize: "0.8125rem" }}
+          >
+            All Subjects
+          </button>
+          {subjects.map((sub) => {
+            const count = (data?.projects || []).filter(
+              (p) => p.subjectId === sub.id && (tab === "pending" ? (AWAITING.includes(p.status) && p.idea?.status === "PENDING") : true)
+            ).length;
+            return (
+              <button
+                key={sub.id}
+                type="button"
+                onClick={() => setSelectedSubjectId(sub.id)}
+                className={`btn btn-sm ${selectedSubjectId === sub.id ? "btn-primary" : "btn-secondary"}`}
+                style={{
+                  borderRadius: 20,
+                  padding: "5px 14px",
+                  fontSize: "0.8125rem",
+                  display: "inline-flex",
+                  gap: 6,
+                  alignItems: "center",
+                }}
+              >
+                <span>{sub.name}</span>
+                <span
+                  style={{
+                    background: selectedSubjectId === sub.id ? "rgba(255,255,255,0.25)" : "rgba(255,255,255,0.08)",
+                    padding: "1px 6px",
+                    borderRadius: 10,
+                    fontSize: "0.72rem",
+                    fontWeight: 700,
+                  }}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="toolbar">
         <SearchBar value={search} onChange={setSearch} placeholder="Search idea, subject or domain…" />

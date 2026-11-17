@@ -110,10 +110,71 @@ async function updateFaculty(req, res, next) {
 async function deleteFaculty(req, res, next) {
   try {
     const { id } = req.params;
-    const faculty = await prisma.faculty.findUnique({ where: { id } });
+    const { reassignTo } = req.body || {};
+
+    const faculty = await prisma.faculty.findUnique({
+      where: { id },
+      include: {
+        projects: true,
+        user: { include: { mentor: true } },
+      },
+    });
     if (!faculty) return res.status(404).json({ message: "Faculty not found." });
-    await prisma.user.delete({ where: { id: faculty.userId } });
-    res.json({ message: "Faculty deleted." });
+
+    await prisma.$transaction(async (tx) => {
+      // Find a fallback faculty if projects need to be reassigned
+      let targetFacultyId = reassignTo;
+      if (!targetFacultyId) {
+        const otherFaculty = await tx.faculty.findFirst({
+          where: { id: { not: id } },
+        });
+        targetFacultyId = otherFaculty?.id;
+      }
+
+      if (targetFacultyId) {
+        // Reassign projects to another active faculty member
+        await tx.project.updateMany({
+          where: { facultyId: id },
+          data: { facultyId: targetFacultyId },
+        });
+      } else {
+        // If no other faculty exists in system, delete projects
+        await tx.project.deleteMany({
+          where: { facultyId: id },
+        });
+      }
+
+      // Nullify optional reviewer and evaluation foreign keys on Faculty
+      await tx.ideaReview.updateMany({ where: { reviewerId: id }, data: { reviewerId: null } });
+      await tx.documentVersion.updateMany({ where: { facultyId: id }, data: { facultyId: null } });
+      await tx.progressReview.updateMany({ where: { facultyId: id }, data: { facultyId: null } });
+      await tx.meeting.updateMany({ where: { facultyId: id }, data: { facultyId: null } });
+      await tx.presentation.updateMany({ where: { facultyId: id }, data: { facultyId: null } });
+      await tx.evaluation.updateMany({ where: { facultyId: id }, data: { facultyId: null } });
+      await tx.milestone.updateMany({ where: { facultyId: id }, data: { facultyId: null } });
+
+      // Handle any linked mentor profile if present
+      if (faculty.user?.mentor?.id) {
+        const mentorId = faculty.user.mentor.id;
+        await tx.project.updateMany({ where: { mentorId }, data: { mentorId: null } });
+        await tx.progressReview.updateMany({ where: { mentorId }, data: { mentorId: null } });
+        await tx.documentVersion.updateMany({ where: { mentorId }, data: { mentorId: null } });
+        await tx.ideaReview.updateMany({ where: { mentorReviewerId: mentorId }, data: { mentorReviewerId: null } });
+        await tx.meeting.updateMany({ where: { mentorId }, data: { mentorId: null } });
+        await tx.mentorDomain.deleteMany({ where: { mentorId } });
+        await tx.mentor.deleteMany({ where: { id: mentorId } });
+      }
+
+      // Clean up User dependencies (ActivityLog, ConversationParticipant, Message)
+      await tx.activityLog.updateMany({ where: { userId: faculty.userId }, data: { userId: null } });
+      await tx.conversationParticipant.deleteMany({ where: { userId: faculty.userId } });
+      await tx.message.deleteMany({ where: { senderId: faculty.userId } });
+
+      // Delete user (which cascades to Faculty and FacultySubject)
+      await tx.user.delete({ where: { id: faculty.userId } });
+    });
+
+    res.json({ message: "Faculty deleted successfully." });
   } catch (err) { next(err); }
 }
 

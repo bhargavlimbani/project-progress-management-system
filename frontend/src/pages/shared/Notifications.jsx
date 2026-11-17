@@ -4,12 +4,14 @@ import toast from "react-hot-toast";
 import { Bell, CheckCheck, Filter } from "lucide-react";
 import { notificationApi } from "../../services/index.js";
 import { useApi } from "../../hooks/useApi.js";
+import { useAuth } from "../../context/AuthContext.jsx";
 import { NOTIFICATION_TONE, STATUS_TONE_HEX } from "../../utils/constants.js";
-import { timeAgo, formatDateTime, humanize, apiErrorMessage } from "../../utils/format.js";
+import { timeAgo, formatDateTime, humanize, apiErrorMessage, resolveNotificationLink } from "../../utils/format.js";
 import { PageHeader, EmptyState, SkeletonTable, Tabs } from "../../components/ui/index.js";
 
 export default function Notifications() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { data, loading, setData, refetch } = useApi(() => notificationApi.list(), [], {
     initialData: [],
   });
@@ -57,7 +59,8 @@ export default function Notifications() {
       });
       notificationApi.markRead([notification.id]).catch(() => {});
     }
-    if (notification.link) navigate(notification.link);
+    const target = resolveNotificationLink(notification.link, user?.role);
+    if (target) navigate(target);
   };
 
   return (

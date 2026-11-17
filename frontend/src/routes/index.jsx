@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import DashboardLayout from "../layouts/DashboardLayout.jsx";
 import { ROLE_HOME } from "../utils/constants.js";
@@ -132,6 +132,15 @@ function NotFound() {
   );
 }
 
+function ProjectRedirect() {
+  const { user } = useAuth();
+  const { id, subpath } = useParams();
+  if (!user) return <Navigate to="/" replace />;
+  const role = (user.role || "").toLowerCase();
+  const target = subpath ? `/${role}/projects/${id}/${subpath}` : `/${role}/projects/${id}`;
+  return <Navigate to={target} replace />;
+}
+
 export default function AppRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
@@ -139,6 +148,10 @@ export default function AppRoutes() {
         {/* Public */}
         <Route path="/" element={<RootRoute />} />
         <Route path="/activate/:token" element={<Activate />} />
+
+        {/* Global / cross-role project redirect */}
+        <Route path="/projects/:id" element={<ProjectRedirect />} />
+        <Route path="/projects/:id/:subpath" element={<ProjectRedirect />} />
 
         {/* ── Admin ───────────────────────────────────────────────────── */}
         <Route
@@ -159,6 +172,7 @@ export default function AppRoutes() {
           <Route path="students" element={<Students />} />
           <Route path="projects" element={<ProjectsList />} />
           <Route path="projects/:id" element={<ProjectDetails />} />
+          <Route path="projects/:id/:subpath" element={<ProjectDetails />} />
           <Route path="milestones" element={<MilestoneTemplates />} />
           <Route path="presentations" element={<Presentations />} />
           <Route path="reports" element={<Reports />} />
@@ -182,6 +196,7 @@ export default function AppRoutes() {
           <Route index element={<FacultyDashboard />} />
           <Route path="projects" element={<ProjectsList />} />
           <Route path="projects/:id" element={<ProjectDetails />} />
+          <Route path="projects/:id/:subpath" element={<ProjectDetails />} />
           <Route path="idea-reviews" element={<IdeaReviews />} />
           <Route path="weekly-reviews" element={<WeeklyReviews />} />
           <Route path="documents" element={<DocumentReviews />} />
@@ -206,7 +221,10 @@ export default function AppRoutes() {
           <Route index element={<MentorDashboard />} />
           <Route path="projects" element={<ProjectsList />} />
           <Route path="projects/:id" element={<ProjectDetails />} />
+          <Route path="projects/:id/:subpath" element={<ProjectDetails />} />
           <Route path="weekly-reviews" element={<WeeklyReviews />} />
+          <Route path="reviews" element={<WeeklyReviews />} />
+          <Route path="reviews/:id" element={<WeeklyReviews />} />
           <Route path="meetings" element={<Meetings />} />
           <Route path="documents" element={<DocumentReviews />} />
           <Route path="notifications" element={<Notifications />} />
@@ -227,6 +245,7 @@ export default function AppRoutes() {
           <Route index element={<StudentDashboard />} />
           <Route path="projects" element={<MyProjects />} />
           <Route path="projects/:id" element={<ProjectDetails />} />
+          <Route path="projects/:id/:subpath" element={<ProjectDetails />} />
           <Route path="progress" element={<StudentProgress />} />
           <Route path="documents" element={<MyProjects />} />
           <Route path="presentations" element={<Presentations />} />

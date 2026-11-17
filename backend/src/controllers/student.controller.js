@@ -233,4 +233,40 @@ async function exportStudents(req, res, next) {
   } catch (err) { next(err); }
 }
 
-module.exports = { getStudents, getStudentById, createStudent, updateStudent, deleteStudent, resetStudentPassword, activateStudentAccount, exportStudents };
+async function searchPeers(req, res, next) {
+  try {
+    const { q } = req.query;
+    if (!q || q.trim().length < 2) return res.json({ students: [] });
+    const term = q.trim();
+    const students = await prisma.student.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { enrollmentNumber: { contains: term, mode: "insensitive" } },
+          { name: { contains: term, mode: "insensitive" } },
+          { email: { contains: term, mode: "insensitive" } },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        enrollmentNumber: true,
+        email: true,
+      },
+      take: 10,
+    });
+    res.json({ students });
+  } catch (err) { next(err); }
+}
+
+module.exports = {
+  getStudents,
+  getStudentById,
+  createStudent,
+  updateStudent,
+  deleteStudent,
+  resetStudentPassword,
+  activateStudentAccount,
+  exportStudents,
+  searchPeers,
+};

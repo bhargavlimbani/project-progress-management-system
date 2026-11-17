@@ -7,7 +7,7 @@ const {
   getMilestones, createMilestone, updateMilestone, deleteMilestone, createFromTemplate,
 } = require("../controllers/milestone.controller");
 const {
-  getWeeklyProgress, submitWeeklyProgress, reviewProgress, getPendingReviews,
+  getWeeklyProgress, submitWeeklyProgress, reviewProgress, getPendingReviews, getProjectGitHubStats,
 } = require("../controllers/weeklyProgress.controller");
 const {
   getDocuments, uploadDocument, reviewDocumentVersion,
@@ -48,6 +48,7 @@ router.post(
   reviewProgress
 );
 router.get("/pending-reviews", authorize("MENTOR", "FACULTY"), getPendingReviews);
+router.get("/projects/:projectId/github-stats", getProjectGitHubStats);
 
 // Evidence for weekly progress — uploaded first, submitted as URLs
 router.post(

@@ -20,14 +20,10 @@ async function scopeProjectWhere(user) {
     case "FACULTY": {
       const faculty = await prisma.faculty.findUnique({
         where: { userId: user.id },
-        include: { subjects: true },
       });
       if (!faculty) return { id: "__none__" };
-      const subjectIds = faculty.subjects.map((s) => s.subjectId);
-      // Own projects, plus anything in a subject they are assigned to.
-      return {
-        OR: [{ facultyId: faculty.id }, { subjectId: { in: subjectIds } }],
-      };
+      // Strict access: only the assigned faculty of the project can see/access it
+      return { facultyId: faculty.id };
     }
 
     case "MENTOR": {

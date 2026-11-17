@@ -85,6 +85,7 @@ export const studentApi = {
   update: (id, data) => api.put(`/students/${id}`, data),
   delete: (id) => api.delete(`/students/${id}`),
   resetPassword: (id, data) => api.post(`/students/${id}/reset-password`, data),
+  searchPeers: (q) => api.get("/students/peers", { params: { q } }),
   download: (params) =>
     downloadFile("/students/export", { params, fallbackName: "students.xlsx" }),
 };
@@ -114,6 +115,10 @@ export const projectApi = {
   reviewIdea: (projectId, data) => api.post(`/projects/${projectId}/idea/review`, data),
   getMentorRecommendation: (projectId) => api.get(`/projects/${projectId}/mentor-recommendation`),
   assignMentor: (projectId, data) => api.post(`/projects/${projectId}/assign-mentor`, data),
+  downloadReportPdf: (id) =>
+    downloadFile(`/projects/${id}/report/pdf`, { fallbackName: `project-report-${id}.pdf` }),
+  addMember: (id, data) => api.post(`/projects/${id}/members`, data),
+  removeMember: (id, memberId) => api.delete(`/projects/${id}/members/${memberId}`),
 };
 
 // ── Milestones ────────────────────────────────────────────────────────────
@@ -137,6 +142,8 @@ export const progressApi = {
     api.post(`/modules/projects/${projectId}/evidence`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
+  getGitHubStats: (projectId, params) =>
+    api.get(`/modules/projects/${projectId}/github-stats`, { params }),
 };
 
 // ── Documents ─────────────────────────────────────────────────────────────

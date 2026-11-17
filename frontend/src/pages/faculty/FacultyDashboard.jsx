@@ -98,7 +98,14 @@ export default function FacultyDashboard() {
                 </div>
                 <div style={{ flex: 1, overflow: "hidden" }}>
                   <div style={{ fontSize: "0.875rem", fontWeight: 600 }} className="truncate">{p.title}</div>
-                  <div style={{ fontSize: "0.75rem", color: "var(--slate-400)" }}>{p.members?.[0]?.student?.name}</div>
+                  <div style={{ fontSize: "0.75rem", color: "var(--slate-400)", display: "flex", gap: "6px", alignItems: "center" }}>
+                    <span>{p.members?.[0]?.student?.name}</span>
+                    {p.subject?.name && (
+                      <span className="badge badge-purple" style={{ fontSize: "0.68rem", padding: "1px 6px" }}>
+                        {p.subject.name}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <span className="badge badge-yellow">Pending</span>
               </div>
@@ -123,6 +130,7 @@ export default function FacultyDashboard() {
             <thead>
               <tr>
                 <th>Project</th>
+                <th>Subject</th>
                 <th>Student</th>
                 <th>Domain</th>
                 <th>Mentor</th>
@@ -134,6 +142,11 @@ export default function FacultyDashboard() {
               {projects.slice(0, 8).map((p) => (
                 <tr key={p.id}>
                   <td style={{ fontWeight: 600 }}>{p.title}</td>
+                  <td>
+                    <span className="badge badge-purple" style={{ fontSize: "0.72rem" }}>
+                      {p.subject?.name || "—"}
+                    </span>
+                  </td>
                   <td>{p.members?.[0]?.student?.name || "—"}</td>
                   <td>{p.domain?.name || "—"}</td>
                   <td>{p.mentor?.user?.name || "—"}</td>

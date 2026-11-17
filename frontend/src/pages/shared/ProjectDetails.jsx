@@ -1,12 +1,13 @@
-import { useMemo, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import toast from "react-hot-toast";
 import {
   LayoutDashboard, CalendarRange, TrendingUp, FileText, MessageSquareQuote,
   MessageSquare, Presentation as PresentationIcon, Trophy, History,
   ArrowLeft, User, UserCheck, BookOpen, Layers, Sparkles, AlertTriangle,
+  FileDown, UserPlus, X, Loader2, CheckCircle2,
 } from "lucide-react";
-import { projectApi } from "../../services/index.js";
+import { projectApi, studentApi } from "../../services/index.js";
 import { useApi } from "../../hooks/useApi.js";
 import { useAuth } from "../../context/AuthContext.jsx";
 import {
@@ -14,7 +15,7 @@ import {
 } from "../../utils/format.js";
 import {
   PageHeader, Tabs, StatusBadge, ProgressBar, CircularProgress, EmptyState,
-  SkeletonCard,
+  SkeletonCard, Modal,
 } from "../../components/ui/index.js";
 
 import OverviewTab from "../../features/project/OverviewTab.jsx";
@@ -27,18 +28,117 @@ import PresentationTab from "../../features/project/PresentationTab.jsx";
 import EvaluationTab from "../../features/project/EvaluationTab.jsx";
 import ActivityTab from "../../features/project/ActivityTab.jsx";
 
+const normalizeTabKey = (raw) => {
+  const key = (raw || "").toLowerCase().trim();
+  if (!key) return null;
+  if (key === "idea" || key === "overview") return "overview";
+  if (key === "timeline" || key === "milestones") return "timeline";
+  if (key === "progress" || key === "weekly" || key === "weekly-progress") return "progress";
+  if (key === "documents" || key === "document" || key === "files") return "documents";
+  if (key === "feedback" || key === "remarks") return "feedback";
+  if (key === "chat" || key === "messages") return "chat";
+  if (key === "presentation" || key === "presentations") return "presentation";
+  if (key === "evaluation" || key === "evaluations" || key === "marks") return "evaluation";
+  if (key === "activity" || key === "history" || key === "logs") return "activity";
+  return null;
+};
+
 /**
  * Project workspace with the nine tabs from spec §54. Everything a project
  * accumulates over the semester lives here; the header always shows the
  * expected-vs-actual comparison.
  */
 export default function ProjectDetails() {
-  const { id } = useParams();
+  const { id, subpath } = useParams();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
-  const [tab, setTab] = useState("overview");
+
+  const initialTab = normalizeTabKey(subpath) || normalizeTabKey(searchParams.get("tab")) || "overview";
+  const [tab, setTab] = useState(initialTab);
+
+  useEffect(() => {
+    const nextTab = normalizeTabKey(subpath) || normalizeTabKey(searchParams.get("tab"));
+    if (nextTab && nextTab !== tab) {
+      setTab(nextTab);
+    }
+  }, [subpath, searchParams]);
 
   const { data: project, loading, error, refetch } = useApi(() => projectApi.get(id), [id]);
+
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const [addingMember, setAddingMember] = useState(false);
+  const [memberEnrollment, setMemberEnrollment] = useState("");
+  const [peerSuggestions, setPeerSuggestions] = useState([]);
+  const [savingMember, setSavingMember] = useState(false);
+  const [removingMemberId, setRemovingMemberId] = useState(null);
+
+  const isStaff = user?.role === "ADMIN" || user?.role === "FACULTY";
+  const isTeamLead = project?.members?.some((m) => m.studentId === user?.id && m.isLead);
+  const canManageTeam = isStaff || isTeamLead;
+
+  const handleDownloadPdf = async () => {
+    setDownloadingPdf(true);
+    try {
+      await projectApi.downloadReportPdf(project.id);
+      toast.success("Academic Report PDF downloaded successfully.");
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!memberEnrollment || memberEnrollment.trim().length < 2) {
+      setPeerSuggestions([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await studentApi.searchPeers(memberEnrollment.trim());
+        setPeerSuggestions(res?.data?.students || []);
+      } catch {
+        /* silent */
+      }
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [memberEnrollment]);
+
+  const handleAddMember = async (enrollment) => {
+    const val = (enrollment || memberEnrollment).trim();
+    if (!val) {
+      toast.error("Please enter teammate's enrollment number.");
+      return;
+    }
+    setSavingMember(true);
+    try {
+      await projectApi.addMember(project.id, { enrollmentNumber: val });
+      toast.success("Teammate added and invitation sent.");
+      setMemberEnrollment("");
+      setPeerSuggestions([]);
+      setAddingMember(false);
+      refetch();
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setSavingMember(false);
+    }
+  };
+
+  const handleRemoveMember = async (memberId, memberName) => {
+    if (!window.confirm(`Are you sure you want to remove ${memberName} from this project?`)) return;
+    setRemovingMemberId(memberId);
+    try {
+      await projectApi.removeMember(project.id, memberId);
+      toast.success(`${memberName} removed from project.`);
+      refetch();
+    } catch (err) {
+      toast.error(apiErrorMessage(err));
+    } finally {
+      setRemovingMemberId(null);
+    }
+  };
 
   const derived = useMemo(() => {
     if (!project) return null;
@@ -116,10 +216,22 @@ export default function ProjectDetails() {
           { label: project.subject?.name || "Project" },
         ]}
         actions={
-          <button type="button" className="btn btn-secondary" onClick={() => navigate(-1)}>
-            <ArrowLeft size={15} />
-            Back
-          </button>
+          <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm flex items-center gap-1"
+              onClick={handleDownloadPdf}
+              disabled={downloadingPdf}
+              title="Download official Academic Evaluation & Project Report (PDF)"
+            >
+              {downloadingPdf ? <Loader2 size={13} className="spin" /> : <FileDown size={13} />}
+              Academic Report (PDF)
+            </button>
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => navigate(-1)}>
+              <ArrowLeft size={13} />
+              Back
+            </button>
+          </div>
         }
       />
 
@@ -245,8 +357,42 @@ export default function ProjectDetails() {
                 {m.isLead && (
                   <Sparkles size={11} color="var(--yellow-400)" aria-label="Team lead" />
                 )}
+                {!m.isLead && canManageTeam && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveMember(m.id, m.student.name)}
+                    disabled={removingMemberId === m.id}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      padding: 0,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      color: "var(--slate-500)",
+                    }}
+                    title={`Remove ${m.student.name}`}
+                  >
+                    <X size={12} />
+                  </button>
+                )}
               </span>
             ))}
+            {canManageTeam && (
+              <button
+                type="button"
+                onClick={() => setAddingMember(true)}
+                className="btn btn-secondary btn-sm"
+                style={{
+                  padding: "4px 10px",
+                  fontSize: "0.72rem",
+                  borderRadius: 99,
+                }}
+              >
+                <UserPlus size={12} />
+                Add Teammate
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -262,6 +408,105 @@ export default function ProjectDetails() {
       {tab === "presentation" && <PresentationTab {...shared} />}
       {tab === "evaluation" && <EvaluationTab {...shared} />}
       {tab === "activity" && <ActivityTab {...shared} />}
+
+      {addingMember && (
+        <Modal
+          open
+          onClose={() => {
+            setAddingMember(false);
+            setMemberEnrollment("");
+            setPeerSuggestions([]);
+          }}
+          title="Add Team Member"
+          subtitle={`Add another student to "${project.title}". They will receive an invitation and gain shared access.`}
+          footer={
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => {
+                  setAddingMember(false);
+                  setMemberEnrollment("");
+                  setPeerSuggestions([]);
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => handleAddMember()}
+                disabled={savingMember || !memberEnrollment.trim()}
+              >
+                {savingMember ? <Loader2 size={14} className="spin" /> : <UserPlus size={14} />}
+                Add Teammate
+              </button>
+            </>
+          }
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <div className="form-group">
+              <label className="form-label">Teammate Enrollment Number or Name</label>
+              <input
+                className="form-input"
+                placeholder="e.g. 92301733021 or Yash"
+                value={memberEnrollment}
+                onChange={(e) => setMemberEnrollment(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            {peerSuggestions.length > 0 && (
+              <div>
+                <span style={{ fontSize: "0.72rem", color: "var(--slate-400)", fontWeight: 600, display: "block", marginBottom: 6 }}>
+                  Matching Students:
+                </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {peerSuggestions.map((p) => {
+                    const alreadyInTeam = project.members?.some((m) => m.studentId === p.id);
+                    return (
+                      <div
+                        key={p.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          padding: "8px 12px",
+                          borderRadius: 6,
+                          background: "rgba(255, 255, 255, 0.03)",
+                          border: "1px solid rgba(255, 255, 255, 0.06)",
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontSize: "0.82rem", fontWeight: 600 }}>{p.name}</div>
+                          <div style={{ fontSize: "0.72rem", color: "var(--slate-500)" }}>
+                            {p.enrollmentNumber} • {p.email}
+                          </div>
+                        </div>
+                        {alreadyInTeam ? (
+                          <span className="badge badge-gray" style={{ fontSize: "0.68rem" }}>
+                            Already on team
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: "0.72rem" }}
+                            onClick={() => handleAddMember(p.enrollmentNumber)}
+                            disabled={savingMember}
+                          >
+                            Select & Add
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
     </>
   );
 }

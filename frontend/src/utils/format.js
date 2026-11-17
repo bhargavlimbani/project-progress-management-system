@@ -123,3 +123,21 @@ export function apiErrorMessage(error, fallback = "Something went wrong.") {
   }
   return data.message || fallback;
 }
+
+/** Resolve notification destination links reliably across roles and legacy routes. */
+export function resolveNotificationLink(rawLink, userRole) {
+  if (!rawLink || typeof rawLink !== "string") return null;
+  const role = (userRole || "").toLowerCase();
+
+  // If link is role-less /projects/:id
+  if (rawLink.startsWith("/projects/")) {
+    return role ? `/${role}${rawLink}` : `/admin${rawLink}`;
+  }
+
+  // If mentor reviews link: /mentor/reviews/:id -> /mentor/weekly-reviews
+  if (rawLink.startsWith("/mentor/reviews/")) {
+    return "/mentor/weekly-reviews";
+  }
+
+  return rawLink;
+}

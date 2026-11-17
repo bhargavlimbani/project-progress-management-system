@@ -9,6 +9,7 @@ import { apiErrorMessage, formatDateTime, formatBytes } from "../../utils/format
 import {
   EmptyState, Modal, StatusBadge, SkeletonCard, FileUploader,
 } from "../../components/ui/index.js";
+import GitHubLiveCard from "../../components/project/GitHubLiveCard.jsx";
 
 const emptyForm = {
   weekNumber: 1,
@@ -111,6 +112,11 @@ export default function ProgressTab({ project, refetch, user, derived }) {
           </button>
         )}
       </div>
+
+      <GitHubLiveCard
+        projectId={project.id}
+        defaultUrl={entries.find((e) => e.githubUrl)?.githubUrl}
+      />
 
       {!entries.length ? (
         <div className="glass-card">

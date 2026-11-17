@@ -4,7 +4,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Bell, CheckCheck } from "lucide-react";
 import { notificationApi } from "../../services/index.js";
 import { NOTIFICATION_TONE, STATUS_TONE_HEX } from "../../utils/constants.js";
-import { timeAgo } from "../../utils/format.js";
+import { timeAgo, resolveNotificationLink } from "../../utils/format.js";
+import { useAuth } from "../../context/AuthContext.jsx";
 import EmptyState from "./EmptyState.jsx";
 import { useSocket } from "../../hooks/useSocket.js";
 
@@ -13,6 +14,7 @@ import { useSocket } from "../../hooks/useSocket.js";
  * listens for live pushes on the user's socket channel.
  */
 export default function NotificationDropdown() {
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState([]);
   const [unread, setUnread] = useState(0);
@@ -101,7 +103,8 @@ export default function NotificationDropdown() {
       notificationApi.markRead([notification.id]).catch(() => {});
     }
     setOpen(false);
-    if (notification.link) navigate(notification.link);
+    const target = resolveNotificationLink(notification.link, user?.role);
+    if (target) navigate(target);
   };
 
   return (
