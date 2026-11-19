@@ -38,8 +38,8 @@ export default function Attendance() {
     async function init() {
       try {
         const [subRes, setRes] = await Promise.all([
-          subjectApi.getAll({ limit: 100 }),
-          settingApi.getAll().catch(() => ({ data: {} })),
+          subjectApi.list({ limit: 100 }),
+          settingApi.get().catch(() => ({ data: {} })),
         ]);
         const subList = subRes.data?.subjects || subRes.data || [];
         setSubjects(subList);

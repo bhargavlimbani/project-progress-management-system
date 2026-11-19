@@ -435,7 +435,34 @@ async function assignMentor(req, res, next) {
 
 async function deleteProject(req, res, next) {
   try {
-    await prisma.project.delete({ where: { id: req.params.id } });
+    const { id } = req.params;
+    const { role } = req.user || {};
+
+    if (role !== "ADMIN" && role !== "FACULTY") {
+      return res.status(403).json({ message: "You are not authorized to delete projects." });
+    }
+
+    const project = await prisma.project.findUnique({ where: { id } });
+    if (!project) {
+      return res.status(404).json({ message: "Project not found." });
+    }
+
+    if (role === "FACULTY") {
+      const accessible = await getAccessibleProject(req.user, id);
+      if (!accessible) {
+        return res.status(403).json({ message: "You are not authorized to delete this project." });
+      }
+    }
+
+    await prisma.project.delete({ where: { id } });
+
+    await logActivity({
+      userId: req.user.id,
+      action: "DELETE_PROJECT",
+      entityType: "Project",
+      entityId: id,
+    });
+
     res.json({ message: "Project deleted." });
   } catch (err) { next(err); }
 }
@@ -451,10 +478,10 @@ async function getStudentProjects(req, res, next) {
       where: { members: { some: { studentId: student.id } } },
       include: {
         subject: true,
-        faculty: { include: { user: true } },
-        mentor: { include: { user: true } },
+        faculty: { include: { user: { select: SAFE_USER_SELECT } } },
+        mentor: { include: { user: { select: SAFE_USER_SELECT } } },
         domain: true,
-        members: { include: { student: true } },
+        members: { include: { student: { select: STUDENT_SUMMARY_SELECT } } },
         milestones: { orderBy: { weekNumber: "asc" }, take: 20 },
         idea: true,
         _count: { select: { weeklyProgress: true, documents: true } },
